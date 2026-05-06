@@ -15,6 +15,7 @@ const router  = express.Router();
 
 const { sql, pool, poolConnect }          = require('../config/db');
 const { requireAuth, requireRole }        = require('../middleware/auth');
+const { requirePermission }               = require('../middleware/permissions');
 const { asyncHandler }                    = require('../middleware/errorHandler');
 const { fetchAndStoreRates, getAllRates }  = require('../services/currencyService');
 
@@ -78,7 +79,7 @@ router.get('/rate/:from/:to', asyncHandler(async (req, res) => {
 }));
 
 // ── POST /api/currency/refresh — manual trigger (admin only) ──
-router.post('/refresh', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/refresh', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgRes = await pool.request().query(`SELECT TOP 1 base_currency FROM org_settings`);
   const base   = orgRes.recordset[0]?.base_currency || 'AUD';
@@ -88,7 +89,7 @@ router.post('/refresh', requireRole('admin'), asyncHandler(async (req, res) => {
 }));
 
 // ── POST /api/currency ────────────────────────────────────────
-router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { code, name, symbol } = req.body;
   if (!code || !name) return res.status(400).json({ success: false, error: 'code and name required.' });
@@ -106,7 +107,7 @@ router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
 }));
 
 // ── PATCH /api/currency/:code ─────────────────────────────────
-router.patch('/:code', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:code', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { is_active } = req.body;
 
@@ -119,7 +120,7 @@ router.patch('/:code', requireRole('admin'), asyncHandler(async (req, res) => {
 }));
 
 // ── POST /api/currency/rate/manual — set a rate manually ─────
-router.post('/rate/manual', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/rate/manual', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { from_currency, to_currency, rate, rate_date } = req.body;
   if (!from_currency || !to_currency || !rate) {

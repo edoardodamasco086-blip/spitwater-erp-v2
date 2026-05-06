@@ -21,6 +21,7 @@ const router  = express.Router();
 
 const { sql, pool, poolConnect }          = require('../config/db');
 const { requireAuth, requireRole }        = require('../middleware/auth');
+const { requirePermission }               = require('../middleware/permissions');
 const { asyncHandler }                    = require('../middleware/errorHandler');
 
 router.use(requireAuth);
@@ -49,7 +50,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // ── POST /api/price-lists ─────────────────────────────────────
-router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const {
     name, price_list_type = 'retail', currency_code = 'AUD',
@@ -89,7 +90,7 @@ router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
 }));
 
 // ── PATCH /api/price-lists/:id ────────────────────────────────
-router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const id = parseInt(req.params.id);
   const {
@@ -134,7 +135,7 @@ router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
 }));
 
 // ── DELETE /api/price-lists/:id ───────────────────────────────
-router.delete('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const id = parseInt(req.params.id);
 
@@ -169,7 +170,7 @@ router.get('/:id/contacts', asyncHandler(async (req, res) => {
 
 // ── POST /api/price-lists/:id/contacts ────────────────────────
 // Assigns a contact — upserts (a contact can only have one price list)
-router.post('/:id/contacts', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/:id/contacts', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { contactId } = req.body;
   if (!contactId) return res.status(400).json({ success: false, error: 'contactId required.' });
@@ -191,7 +192,7 @@ router.post('/:id/contacts', requireRole('admin'), asyncHandler(async (req, res)
 }));
 
 // ── DELETE /api/price-lists/:id/contacts/:cid ─────────────────
-router.delete('/:id/contacts/:cid', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/:id/contacts/:cid', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request()
     .input('contact_id',    sql.Int, parseInt(req.params.cid))

@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { usersApi } from '../../api/users';
 import styles from './UsersPage.module.css';
 
-const ROLES = ['admin', 'editor', 'viewer'];
-const ROLE_LABELS = { super_admin: 'Super Admin', admin: 'Admin', editor: 'Editor', viewer: 'Viewer' };
-const ROLE_PILLS  = { super_admin: 'pill-blue', admin: 'pill-green', editor: 'pill-grey', viewer: 'pill-grey' };
+const ROLES = ['admin', 'viewer'];
+const ROLE_LABELS = { super_admin: 'Super Admin', admin: 'System Admin', editor: 'User (Legacy)', viewer: 'User' };
+const ROLE_PILLS  = { super_admin: 'pill-blue', admin: 'pill-blue', editor: 'pill-grey', viewer: 'pill-grey' };
 
 export default function UsersPage() {
   const [users,       setUsers]       = useState([]);
@@ -12,7 +12,7 @@ export default function UsersPage() {
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [showInvite,  setShowInvite]  = useState(false);
-  const [inviteForm,  setInviteForm]  = useState({ email: '', role: 'editor', name: '' });
+  const [inviteForm,  setInviteForm]  = useState({ email: '', role: 'viewer', name: '' });
   const [inviting,    setInviting]    = useState(false);
   const [inviteError, setInviteError] = useState('');
   const [inviteLink,  setInviteLink]  = useState('');
@@ -39,7 +39,7 @@ export default function UsersPage() {
     try {
       const res = await usersApi.invite(inviteForm.email, inviteForm.role, inviteForm.name);
       setInviteLink(res.data.data.inviteLink);
-      setInviteForm({ email: '', role: 'editor', name: '' });
+      setInviteForm({ email: '', role: 'viewer', name: '' });
       load();
     } catch (err) {
       setInviteError(err.response?.data?.error || 'Invite failed.');
@@ -138,6 +138,7 @@ export default function UsersPage() {
                         disabled={u.role === 'super_admin'}
                       >
                         {u.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+                        {u.role === 'editor' && <option value="editor">User (Legacy)</option>}
                         {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                       </select>
                     </td>

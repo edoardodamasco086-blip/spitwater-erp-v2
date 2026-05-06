@@ -18,6 +18,7 @@ const crypto  = require('crypto');
 
 const { sql, pool, poolConnect }       = require('../config/db');
 const { requireAuth, requireRole }     = require('../middleware/auth');
+const { requirePermission }            = require('../middleware/permissions');
 const { asyncHandler }                 = require('../middleware/errorHandler');
 const { hashPassword }                 = require('../utils/password');
 const logger                           = require('../config/logger');
@@ -29,7 +30,7 @@ router.use(requireAuth);
 // GET /api/users
 // Returns all users in the current org
 // ────────────────────────────────────────────────────────────────
-router.get('/', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/', requirePermission('users', 'read'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()
@@ -59,7 +60,7 @@ router.get('/', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // GET /api/users/:id
 // ────────────────────────────────────────────────────────────────
-router.get('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/:id', requirePermission('users', 'read'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()
@@ -88,7 +89,7 @@ router.get('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
 // Body: { email, role, full_name }
 // Generates an invite token — in production this emails the link
 // ────────────────────────────────────────────────────────────────
-router.post('/invite', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/invite', requirePermission('users', 'write'), asyncHandler(async (req, res) => {
   const { email, role, full_name } = req.body;
 
   if (!email || !role) {
@@ -155,7 +156,7 @@ router.post('/invite', requireRole('admin'), asyncHandler(async (req, res) => {
 // PATCH /api/users/:id
 // Body: { full_name, phone }
 // ────────────────────────────────────────────────────────────────
-router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   const userId = parseInt(req.params.id);
   const { full_name, phone } = req.body;
 
@@ -190,7 +191,7 @@ router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
 // PATCH /api/users/:id/role
 // Body: { role }
 // ────────────────────────────────────────────────────────────────
-router.patch('/:id/role', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:id/role', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   const userId  = parseInt(req.params.id);
   const { role } = req.body;
 
@@ -223,7 +224,7 @@ router.patch('/:id/role', requireRole('admin'), asyncHandler(async (req, res) =>
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/users/:id/deactivate  (soft delete — no DELETE in ERP)
 // ────────────────────────────────────────────────────────────────
-router.patch('/:id/deactivate', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:id/deactivate', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   const userId = parseInt(req.params.id);
 
   if (userId === req.user.userId) {
@@ -252,7 +253,7 @@ router.patch('/:id/deactivate', requireRole('admin'), asyncHandler(async (req, r
 // ────────────────────────────────────────────────────────────────
 // GET /api/users/invites
 // ────────────────────────────────────────────────────────────────
-router.get('/invites/list', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/invites/list', requirePermission('users', 'read'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()
@@ -276,7 +277,7 @@ router.get('/invites/list', requireRole('admin'), asyncHandler(async (req, res) 
 // ────────────────────────────────────────────────────────────────
 // DELETE /api/users/invites/:id  (revoke invite)
 // ────────────────────────────────────────────────────────────────
-router.delete('/invites/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/invites/:id', requirePermission('users', 'delete'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   await pool.request()

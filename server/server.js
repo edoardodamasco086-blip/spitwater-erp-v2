@@ -22,7 +22,6 @@ const usersRoutes     = require('./routes/users');
 const dashboardRoutes  = require('./routes/dashboard');
 const contactsRoutes   = require('./routes/contacts');
 const settingsRoutes   = require('./routes/settings');
-const teamsRoutes      = require('./routes/teams');
 const inviteRoutes      = require('./routes/invite-accept');
 const permissionsRoutes = require('./routes/permissions');
 const numberingRoutes      = require('./routes/numbering');
@@ -34,6 +33,7 @@ const productsRoutes        = require('./routes/products');
 const productSuppliersRoutes = require('./routes/product-suppliers');
 const productAssociationTypesRoutes = require('./routes/product-association-types');
 const productAssociationsRoutes = require('./routes/product-associations');
+const customFieldsRoutes    = require('./routes/custom-fields');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -109,7 +109,6 @@ app.use('/api/users',     usersRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/contacts',  contactsRoutes);
 app.use('/api/settings',  settingsRoutes);
-app.use('/api/teams',     teamsRoutes);
 app.use('/api/invite',       inviteRoutes);
 app.use('/api/permissions',  permissionsRoutes);
 app.use('/api/numbering',        numberingRoutes);
@@ -121,6 +120,7 @@ app.use('/api/products',          productsRoutes);
 app.use('/api/products',          productSuppliersRoutes);
 app.use('/api/product-association-types', productAssociationTypesRoutes);
 app.use('/api/products/:id',      productAssociationsRoutes);
+app.use('/api/custom-fields',     customFieldsRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

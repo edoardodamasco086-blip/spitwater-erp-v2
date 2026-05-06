@@ -127,7 +127,8 @@ export default function ProductDetailPage() {
         ]);
       });
 
-    productsApi.customFields()
+    // Custom fields: initial load without scope (will be reloaded with category when tab is opened)
+    productsApi.customFields(null)
       .then(({ data }) => {
         setCustomFields(data.data || []);
       })
@@ -152,6 +153,7 @@ export default function ProductDetailPage() {
         productsApi.getSuppliers(id).catch(() => ({ data: { data: [] } })),
       ]);
       const p = prodRes.data.data;
+      const catScopeKey = p.category_id ? String(p.category_id) : null;
       setProduct(p);
       setPricing(pricingRes.data.data);
       setStock(stockRes.data.data);
@@ -160,6 +162,10 @@ export default function ProductDetailPage() {
       setSupplierPrices(suppRes.data.data || []);
       setUomLock(lockRes.data.data || { locked: false, reasons: [] });
       setProductSuppliers(suppliersRes.data.data || []);
+      // Reload custom fields scoped to this product's category
+      productsApi.customFields(catScopeKey)
+        .then(({ data }) => setCustomFields(data.data || []))
+        .catch(() => {});
       // Populate form
       setForm({
         name:                    p.name || '',
@@ -275,7 +281,7 @@ export default function ProductDetailPage() {
     }
     setSaving(true);
     try {
-      await productsApi.saveCustomValues(id, customValues);
+      await productsApi.saveCustomValues(id, customValues, form.category_id ? String(form.category_id) : null);
       setSuccess('Custom fields saved.');
       setError('');
       setTimeout(() => setSuccess(''), 3000);
@@ -371,8 +377,12 @@ export default function ProductDetailPage() {
                 setActiveTab(t.key);
                 // Reload custom fields each time tab is opened to pick up newly created fields
                 if (t.key === 'custom') {
-                  productsApi.customFields()
+                  const scopeKey = form.category_id ? String(form.category_id) : null;
+                  productsApi.customFields(scopeKey)
                     .then(({ data }) => setCustomFields(data.data || []))
+                    .catch(() => {});
+                  productsApi.getCustomValues(id, scopeKey)
+                    .then(({ data }) => setCustomValues(data.data || {}))
                     .catch(() => {});
                 }
               }}
@@ -744,60 +754,69 @@ export default function ProductDetailPage() {
                 </button>
               </div>
             ) : (
-              <>
-                <div className={styles.customGrid}>
-                  {customFields.map(field => {
-                    const val = customValues[field.field_key];
-                    const isEmpty = val === undefined || val === null || val === '';
-                    const showRequired = field.is_required && isEmpty;
-                    return (
-                    <div key={field.id} className="form-group">
-                      <label className="form-label">
-                        {field.field_label}
-                        {field.is_required && <span style={{color:'var(--red)',marginLeft:3}}>*</span>}
-                      </label>
-                      {field.help_text && <div style={{fontSize:11.5,color:'var(--text-sub)',marginBottom:5}}>{field.help_text}</div>}
+              <div style={{ maxWidth: 860 }}>
+                <div className={styles.card}>
+                  <div className={styles.cardTitle}>Custom Fields</div>
+                  <div className={styles.grid2}>
+                    {customFields.map(field => {
+                      const val = customValues[field.field_key];
+                      const isEmpty = val === undefined || val === null || val === '';
+                      const showRequired = field.is_required && isEmpty;
+                      const fullWidth = field.field_type === 'textarea';
+                      return (
+                        <div
+                          key={field.id}
+                          className="form-group"
+                          style={{ gridColumn: fullWidth ? '1 / -1' : undefined, marginBottom: 0 }}
+                        >
+                          <label className="form-label">
+                            {field.field_label}
+                            {field.is_required && <span style={{color:'var(--red)',marginLeft:3}}>*</span>}
+                          </label>
+                          {field.help_text && <div style={{fontSize:11.5,color:'var(--text-sub)',marginBottom:5}}>{field.help_text}</div>}
 
-                      {field.field_type === 'text' && (
-                        <input className={['form-input', showRequired ? 'error' : ''].join(' ')} value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} placeholder={field.placeholder || ''} />
-                      )}
-                      {field.field_type === 'textarea' && (
-                        <textarea className="form-input" rows={3} value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
-                      )}
-                      {field.field_type === 'number' && (
-                        <input className={['form-input', showRequired ? 'error' : ''].join(' ')} type="number" value={customValues[field.field_key] ?? ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
-                      )}
-                      {field.field_type === 'boolean' && (
-                        <label style={{display:'flex',alignItems:'center',gap:7,cursor:'pointer',fontSize:13.5}}>
-                          <input type="checkbox" checked={!!customValues[field.field_key]} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.checked}))} style={{accentColor:'var(--accent)',width:15,height:15}} />
-                          Yes
-                        </label>
-                      )}
-                      {field.field_type === 'date' && (
-                        <input className="form-input" type="date" value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
-                      )}
-                      {(field.field_type === 'select' || field.field_type === 'multi_select') && (
-                        <select className="form-input" value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))}>
-                          <option value="">Select...</option>
-                          {field.options?.map(o => <option key={o.option_key} value={o.option_key}>{o.option_label}</option>)}
-                        </select>
-                      )}
-                      {showRequired && (
-                        <div style={{fontSize:11.5,color:'var(--red)',marginTop:4}}>This field is required</div>
-                      )}
-                    </div>
-                    );
-                  })}
+                          {field.field_type === 'text' && (
+                            <input className={['form-input', showRequired ? 'error' : ''].join(' ')} value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} placeholder={field.placeholder || ''} />
+                          )}
+                          {field.field_type === 'textarea' && (
+                            <textarea className="form-input" rows={3} value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
+                          )}
+                          {field.field_type === 'number' && (
+                            <input className={['form-input', showRequired ? 'error' : ''].join(' ')} type="number" value={customValues[field.field_key] ?? ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
+                          )}
+                          {field.field_type === 'boolean' && (
+                            <label style={{display:'flex',alignItems:'center',gap:7,cursor:'pointer',fontSize:13.5}}>
+                              <input type="checkbox" checked={!!customValues[field.field_key]} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.checked}))} style={{accentColor:'var(--accent)',width:15,height:15}} />
+                              Yes
+                            </label>
+                          )}
+                          {field.field_type === 'date' && (
+                            <input className="form-input" type="date" value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))} />
+                          )}
+                          {(field.field_type === 'select' || field.field_type === 'multi_select') && (
+                            <select className="form-input" value={customValues[field.field_key] || ''} onChange={e => setCustomValues(v => ({...v,[field.field_key]:e.target.value}))}>
+                              <option value="">Select...</option>
+                              {field.options?.map(o => <option key={o.option_key} value={o.option_key}>{o.option_label}</option>)}
+                            </select>
+                          )}
+                          {showRequired && (
+                            <div style={{fontSize:11.5,color:'var(--red)',marginTop:4}}>This field is required</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                   <button className="btn btn-primary" onClick={handleSaveCustom} disabled={saving}>
                     {saving ? 'Saving...' : 'Save custom fields'}
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}
+
 
         {/* ── PRICING TAB ── */}
         {!isNew && activeTab === 'pricing' && (

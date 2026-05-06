@@ -9,6 +9,8 @@ const AVATAR_COLORS = ['#2F7FE8','#2ECC8A','#E89B2F','#9366E8','#E05252','#3BBCD
 function avatarColor(name) { return AVATAR_COLORS[(name||'').charCodeAt(0) % AVATAR_COLORS.length]; }
 function initials(name)    { return (name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
 
+const ROLE_LABELS = { super_admin: 'Super Admin', admin: 'System Admin', editor: 'User (Legacy)', viewer: 'User' };
+
 export default function PermissionsPage() {
   const [teams,     setTeams]     = useState([]);
   const [resources, setResources] = useState([]);
@@ -298,14 +300,14 @@ export default function PermissionsPage() {
                     <tbody>
                       {resources.map(r => {
                         const rp = perms[r.key] || {};
-                        const allGranted = r.actions.every(a => rp[`can_${a}`]);
+                        const allGranted = isAdminTeam ? true : r.actions.every(a => rp[`can_${a}`]);
                         return (
                           <tr key={r.key} className={styles.matrixRow}>
                             <td className={styles.resourceCell}>{r.label}</td>
                             {['read','write','update','delete'].map(action => {
                               const hasAction = r.actions.includes(action);
                               const field = `can_${action}`;
-                              const checked = !!rp[field];
+                              const checked = isAdminTeam ? true : !!rp[field];
                               return (
                                 <td key={action} className={styles.checkCell}>
                                   {hasAction ? (
@@ -378,8 +380,8 @@ export default function PermissionsPage() {
                           <div className={styles.memberName}>{m.full_name}</div>
                           <div className={styles.memberEmail}>{m.email}</div>
                         </div>
-                        <span className={`pill ${m.role==='super_admin'?'pill-blue':m.role==='admin'?'pill-green':'pill-grey'}`}>
-                          {m.role}
+                        <span className={`pill ${m.role==='super_admin' || m.role==='admin' ? 'pill-blue' : 'pill-grey'}`}>
+                          {ROLE_LABELS[m.role] || m.role}
                         </span>
                         <button className="btn btn-outline btn-sm" onClick={() => handleRemoveMember(m.id)}>
                           Remove

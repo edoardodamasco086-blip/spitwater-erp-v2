@@ -191,7 +191,6 @@ export default function DashboardShell() {
                 <NavItem to="/admin"       icon={<ShieldIcon />} label="Overview"        collapsed={collapsed} end />
                 <NavItem to="/admin/users" icon={<UsersIcon />}  label="Users & Teams"   collapsed={collapsed} />
                 <NavItem to="/admin/permissions" icon={<KeyIcon />} label="Roles & Permissions" collapsed={collapsed} />
-                <NavItem to="/admin/teams"             icon={<UsersIcon />}  label="Teams"               collapsed={collapsed} />
                 <NavItem to="/admin/products/categories"   icon={<TagIcon />}    label="Categories"          collapsed={collapsed} />
                 <NavItem to="/admin/products/custom-fields"icon={<FieldsIcon />} label="Custom Fields"       collapsed={collapsed} />
                 <NavItem to="/admin/products/uom"           icon={<UomIcon />}       label="Units of Measure"   collapsed={collapsed} />

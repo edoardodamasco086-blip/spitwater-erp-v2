@@ -11,6 +11,7 @@ const express = require('express');
 const router  = express.Router();
 const { sql, pool, poolConnect } = require('../config/db');
 const { requireAuth, requireRole }  = require('../middleware/auth');
+const { requirePermission }         = require('../middleware/permissions');
 const { asyncHandler }              = require('../middleware/errorHandler');
 
 router.use(requireAuth);
@@ -93,7 +94,7 @@ router.get('/:entity', asyncHandler(async (req, res) => {
 // ── PUT /api/field-validation/:entity ────────────────────────
 // Full replace: deletes all existing rules for entity, re-inserts from body
 // Body: { rules: [{ field_key, field_label, is_required, validation_type, ... rule_order }] }
-router.put('/:entity', requireRole('admin'), asyncHandler(async (req, res) => {
+router.put('/:entity', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { entity }  = req.params;
   const orgId       = req.user.orgId;

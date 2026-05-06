@@ -24,6 +24,7 @@ const router  = express.Router();
 
 const { sql, pool, poolConnect } = require('../config/db');
 const { requireAuth, requireRole, requireMinRole } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 const { asyncHandler } = require('../middleware/errorHandler');
 const logger = require('../config/logger');
 
@@ -67,7 +68,7 @@ router.get('/org', asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/settings/org
 // ────────────────────────────────────────────────────────────────
-router.patch('/org', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/org', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
 
@@ -155,7 +156,7 @@ router.patch('/org', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // GET /api/settings/smtp
 // ────────────────────────────────────────────────────────────────
-router.get('/smtp', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/smtp', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()
@@ -179,7 +180,7 @@ router.get('/smtp', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // POST /api/settings/smtp
 // ────────────────────────────────────────────────────────────────
-router.post('/smtp', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/smtp', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
 
@@ -237,7 +238,7 @@ router.post('/smtp', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/settings/smtp/:id
 // ────────────────────────────────────────────────────────────────
-router.patch('/smtp/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/smtp/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const id    = parseInt(req.params.id);
   const orgId = req.user.orgId;
@@ -298,7 +299,7 @@ router.patch('/smtp/:id', requireRole('admin'), asyncHandler(async (req, res) =>
 // POST /api/settings/smtp/:id/test
 // Attempts a real SMTP connection using nodemailer
 // ────────────────────────────────────────────────────────────────
-router.post('/smtp/:id/test', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/smtp/:id/test', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const id = parseInt(req.params.id);
 
@@ -350,7 +351,7 @@ router.post('/smtp/:id/test', requireRole('admin'), asyncHandler(async (req, res
 // ────────────────────────────────────────────────────────────────
 // DELETE /api/settings/smtp/:id
 // ────────────────────────────────────────────────────────────────
-router.delete('/smtp/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/smtp/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request()
     .input('id',     sql.Int, parseInt(req.params.id))
@@ -363,7 +364,7 @@ router.delete('/smtp/:id', requireRole('admin'), asyncHandler(async (req, res) =
 // ────────────────────────────────────────────────────────────────
 // GET /api/settings/numbering
 // ────────────────────────────────────────────────────────────────
-router.get('/numbering', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/numbering', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()
@@ -383,7 +384,7 @@ router.get('/numbering', requireRole('admin'), asyncHandler(async (req, res) => 
 // ────────────────────────────────────────────────────────────────
 // POST /api/settings/numbering
 // ────────────────────────────────────────────────────────────────
-router.post('/numbering', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/numbering', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const {
@@ -431,7 +432,7 @@ router.post('/numbering', requireRole('admin'), asyncHandler(async (req, res) =>
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/settings/numbering/:id
 // ────────────────────────────────────────────────────────────────
-router.patch('/numbering/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/numbering/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { prefix, suffix, separator, include_year, include_month, padding, next_number, is_active, is_default, allow_manual } = req.body;
 
@@ -496,7 +497,7 @@ router.get('/warehouses', asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // POST /api/settings/warehouses
 // ────────────────────────────────────────────────────────────────
-router.post('/warehouses', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/warehouses', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const { code, name, warehouse_type = 'main', address_line1, suburb, state, postcode, dealer_visible = false, dealer_buffer_qty = 0 } = req.body;
@@ -530,7 +531,7 @@ router.post('/warehouses', requireRole('admin'), asyncHandler(async (req, res) =
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/settings/warehouses/:id
 // ────────────────────────────────────────────────────────────────
-router.patch('/warehouses/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/warehouses/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, address_line1, suburb, state, postcode, dealer_visible, dealer_buffer_qty, is_active } = req.body;
 
@@ -564,7 +565,7 @@ router.patch('/warehouses/:id', requireRole('admin'), asyncHandler(async (req, r
 // ────────────────────────────────────────────────────────────────
 // GET /api/settings/audit?page=1&limit=50&action=&search=
 // ────────────────────────────────────────────────────────────────
-router.get('/audit', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/audit', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId  = req.user.orgId;
   const page   = Math.max(1, parseInt(req.query.page)  || 1);
@@ -614,7 +615,7 @@ router.get('/audit', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // GET /api/settings/org-stats  — counts for settings dashboard
 // ────────────────────────────────────────────────────────────────
-router.get('/org-stats', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/org-stats', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
 

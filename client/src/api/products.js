@@ -21,11 +21,11 @@ export const productsApi = {
   priceLists:       ()      => client.get('/products/price-lists'),
   createPriceList:  (data)  => client.post('/products/price-lists', data),
 
-  // Custom fields
-  customFields:      ()          => client.get('/products/custom-fields'),
-  createCustomField: (data)      => client.post('/products/custom-fields', data),
-  getCustomValues:   (id)        => client.get(`/products/${id}/custom-values`),
-  saveCustomValues:  (id, values)=> client.put(`/products/${id}/custom-values`, { values }),
+  // Custom fields (product detail — scoped by category)
+  customFields:      (scopeKey)    => client.get('/products/custom-fields', { params: scopeKey != null ? { scope_key: scopeKey } : {} }),
+  createCustomField: (data)        => client.post('/products/custom-fields', data),
+  getCustomValues:   (id, scopeKey)=> client.get(`/products/${id}/custom-values`, { params: scopeKey != null ? { scope_key: scopeKey } : {} }),
+  saveCustomValues:  (id, values, scopeKey) => client.put(`/products/${id}/custom-values`, { values, scope_key: scopeKey }),
 
   // Pricing
   getPricing:  (id)         => client.get(`/products/${id}/pricing`),

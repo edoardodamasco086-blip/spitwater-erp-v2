@@ -24,7 +24,7 @@ const router  = express.Router();
 const { sql, pool, poolConnect }           = require('../config/db');
 const { requireAuth, requireRole }         = require('../middleware/auth');
 const { asyncHandler }                     = require('../middleware/errorHandler');
-const { invalidateCache, getUserPermissions } = require('../middleware/permissions');
+const { invalidateCache, getUserPermissions, requirePermission } = require('../middleware/permissions');
 const logger                               = require('../config/logger');
 
 router.use(requireAuth);
@@ -46,6 +46,9 @@ const RESOURCES = [
   { key: 'bas',             label: 'BAS & Tax',       actions: ['read','write'] },
   { key: 'journals',        label: 'Journals',        actions: ['read','write'] },
   { key: 'settings',        label: 'Settings',        actions: ['read','write'] },
+  { key: 'custom_fields',   label: 'Custom Fields',   actions: ['read','write','update','delete'] },
+  { key: 'price_lists',     label: 'Price Lists',     actions: ['read','write','update','delete'] },
+  { key: 'categories',      label: 'Categories & UOM',actions: ['read','write','update','delete'] },
   { key: 'users',           label: 'Users & Teams',   actions: ['read','write','update','delete'] },
   { key: 'audit_log',       label: 'Audit Log',       actions: ['read'] },
 ];
@@ -106,7 +109,7 @@ router.get('/teams', asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // POST /api/permissions/teams
 // ────────────────────────────────────────────────────────────────
-router.post('/teams', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/teams', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, description, color } = req.body;
   if (!name?.trim()) return res.status(400).json({ success: false, error: 'Team name is required.' });
@@ -144,7 +147,7 @@ router.post('/teams', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/permissions/teams/:id
 // ────────────────────────────────────────────────────────────────
-router.patch('/teams/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/teams/:id', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
   const { name, description, color } = req.body;
@@ -180,7 +183,7 @@ router.patch('/teams/:id', requireRole('admin'), asyncHandler(async (req, res) =
 // ────────────────────────────────────────────────────────────────
 // DELETE /api/permissions/teams/:id
 // ────────────────────────────────────────────────────────────────
-router.delete('/teams/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/teams/:id', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
 
@@ -233,7 +236,7 @@ router.get('/teams/:id/members', asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // POST /api/permissions/teams/:id/members  { userId }
 // ────────────────────────────────────────────────────────────────
-router.post('/teams/:id/members', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/teams/:id/members', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
   const userId = parseInt(req.body.userId);
@@ -258,7 +261,7 @@ router.post('/teams/:id/members', requireRole('admin'), asyncHandler(async (req,
 // ────────────────────────────────────────────────────────────────
 // DELETE /api/permissions/teams/:id/members/:uid
 // ────────────────────────────────────────────────────────────────
-router.delete('/teams/:id/members/:uid', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/teams/:id/members/:uid', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
   const userId = parseInt(req.params.uid);
@@ -292,7 +295,7 @@ router.delete('/teams/:id/members/:uid', requireRole('admin'), asyncHandler(asyn
 // ────────────────────────────────────────────────────────────────
 // GET /api/permissions/teams/:id/perms
 // ────────────────────────────────────────────────────────────────
-router.get('/teams/:id/perms', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/teams/:id/perms', requirePermission('users', 'read'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
 
@@ -325,7 +328,7 @@ router.get('/teams/:id/perms', requireRole('admin'), asyncHandler(async (req, re
 // Body: { permissions: { contacts: { can_read, can_write, ... }, ... } }
 // Saves the entire permission set for a team in one call
 // ────────────────────────────────────────────────────────────────
-router.put('/teams/:id/perms', requireRole('admin'), asyncHandler(async (req, res) => {
+router.put('/teams/:id/perms', requirePermission('users', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const teamId = parseInt(req.params.id);
   const { permissions } = req.body;
@@ -390,7 +393,7 @@ router.put('/teams/:id/perms', requireRole('admin'), asyncHandler(async (req, re
 // ────────────────────────────────────────────────────────────────
 // GET /api/permissions/users/list  — all users available to add to teams
 // ────────────────────────────────────────────────────────────────
-router.get('/users/list', requireRole('admin'), asyncHandler(async (req, res) => {
+router.get('/users/list', requirePermission('users', 'read'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   const rows = await pool.request()

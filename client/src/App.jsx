@@ -12,7 +12,6 @@ import ProfilePage      from './pages/dashboard/ProfilePage';
 import NotFoundPage     from './pages/NotFoundPage';
 import ContactsPage       from './pages/contacts/ContactsPage';
 import SettingsPage       from './pages/settings/SettingsPage';
-import TeamsPage          from './pages/admin/TeamsPage';
 import AcceptInvitePage   from './pages/auth/AcceptInvitePage';
 import PermissionsPage   from './pages/admin/PermissionsPage';
 import ProductsPage      from './pages/products/ProductsPage';
@@ -87,9 +86,6 @@ export default function App() {
         <Route path="admin/exchange-rates"          element={<RequireAdmin><ExchangeRatesPage /></RequireAdmin>} />
         <Route path="settings" element={
           <RequireAdmin><SettingsPage /></RequireAdmin>
-        } />
-        <Route path="admin/teams" element={
-          <RequireAdmin><TeamsPage /></RequireAdmin>
         } />
         <Route path="admin/permissions" element={
           <RequireAdmin><PermissionsPage /></RequireAdmin>

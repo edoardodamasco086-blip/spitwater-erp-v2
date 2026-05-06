@@ -72,3 +72,34 @@
 
 /* States */
 .stateBlock { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; color: var(--text-sub); font-size: 14px; text-align: center; min-height: 200px; justify-content: center; }
+
+/* Entity tabs */
+.entityTabs {
+  display: flex; gap: 4px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 4px; width: fit-content;
+}
+.entityTab {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px; border-radius: 7px; border: none;
+  background: transparent; font-size: 13.5px; color: var(--text-sub);
+  cursor: pointer; font-weight: 500; transition: background 0.15s, color 0.15s;
+}
+.entityTab:hover { background: var(--bg); color: var(--text); }
+.entityTabActive { background: var(--accent) !important; color: #fff !important; }
+.entityTabIcon { display: flex; opacity: 0.8; }
+
+/* Scope filter row */
+.scopeRow {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.scopeLabel { font-size: 12px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 4px; }
+.scopeChip {
+  padding: 4px 12px; border-radius: 20px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid var(--border); background: transparent; color: var(--text-sub);
+  cursor: pointer; transition: all 0.15s;
+}
+.scopeChip:hover { border-color: var(--accent); color: var(--accent); }
+.scopeChipActive { background: var(--accent-dim) !important; border-color: var(--accent) !important; color: var(--accent) !important; font-weight: 600; }

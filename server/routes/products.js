@@ -134,7 +134,7 @@ router.get('/categories', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/products/categories
-router.post('/categories', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.post('/categories', requirePermission('categories', 'write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, parent_id, description, sort_order } = req.body;
   if (!name) return res.status(400).json({ success: false, error: 'name is required.' });
@@ -155,7 +155,7 @@ router.post('/categories', requireMinRole('editor'), asyncHandler(async (req, re
 }));
 
 // PATCH /api/products/categories/:id
-router.patch('/categories/:id', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.patch('/categories/:id', requirePermission('categories', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, description, sort_order, is_active, parent_id } = req.body;
 
@@ -197,7 +197,7 @@ router.get('/uom', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/products/uom
-router.post('/uom', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/uom', requirePermission('categories', 'write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { code, name, is_base } = req.body;
   if (!code || !name) return res.status(400).json({ success: false, error: 'code and name are required.' });
@@ -234,7 +234,7 @@ router.get('/price-lists', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/products/price-lists
-router.post('/price-lists', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/price-lists', requirePermission('price_lists', 'write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, price_list_type, currency_code, is_default, is_tax_inclusive, description } = req.body;
   if (!name) return res.status(400).json({ success: false, error: 'name is required.' });
@@ -264,34 +264,47 @@ router.post('/price-lists', requireRole('admin'), asyncHandler(async (req, res) 
 // ────────────────────────────────────────────────────────────────
 // GET /api/products/custom-fields
 // ────────────────────────────────────────────────────────────────
+// ?scope_key=<category_id>  → returns global (NULL) + category-specific fields
+// no scope_key              → returns ALL product fields (admin use)
 router.get('/custom-fields', asyncHandler(async (req, res) => {
   await poolConnect;
+  const orgId    = req.user.orgId;
+  const scopeKey = req.query.scope_key != null ? String(req.query.scope_key) : null;
+
+  // When scope_key provided: return fields that are global (NULL) OR match this category
+  // When no scope_key: return all product fields (admin listing)
+  const scopeFilter = scopeKey
+    ? 'AND (cfd.scope_key IS NULL OR cfd.scope_key = @scope_key)'
+    : '';
 
   const [fields, options] = await Promise.all([
     pool.request()
-      .input('org_id', sql.Int, req.user.orgId)
+      .input('org_id',     sql.Int,           orgId)
+      .input('scope_key',  sql.NVarChar(100), scopeKey)
       .query(`
-        SELECT id, entity_key, field_key, field_label, field_type,
-               placeholder, help_text, is_required, is_shown_in_list,
-               is_shown_on_pdf, is_readonly, is_active, sort_order,
-               validation_min, validation_max, section_key, default_value
-        FROM custom_field_definitions
-        WHERE org_id = @org_id AND entity_key = 'product'
-        ORDER BY sort_order ASC, field_label ASC
+        SELECT cfd.id, cfd.entity_key, cfd.scope_key, cfd.field_key, cfd.field_label, cfd.field_type,
+               cfd.placeholder, cfd.help_text, cfd.is_required, cfd.is_shown_in_list,
+               cfd.is_shown_on_pdf, cfd.is_readonly, cfd.is_active, cfd.sort_order,
+               cfd.validation_min, cfd.validation_max, cfd.section_key, cfd.default_value
+        FROM custom_field_definitions cfd
+        WHERE cfd.org_id = @org_id AND cfd.entity_key = 'product' AND cfd.is_active = 1
+          ${scopeFilter}
+        ORDER BY cfd.sort_order ASC, cfd.field_label ASC
       `),
     pool.request()
-      .input('org_id', sql.Int, req.user.orgId)
+      .input('org_id',    sql.Int,           orgId)
+      .input('scope_key', sql.NVarChar(100), scopeKey)
       .query(`
         SELECT cfo.id, cfo.field_definition_id, cfo.option_key, cfo.option_label,
                cfo.option_color, cfo.sort_order
         FROM custom_field_options cfo
         INNER JOIN custom_field_definitions cfd ON cfd.id = cfo.field_definition_id
-        WHERE cfd.org_id = @org_id AND cfd.entity_key = 'product'
+        WHERE cfd.org_id = @org_id AND cfd.entity_key = 'product' AND cfd.is_active = 1
+          ${scopeFilter}
         ORDER BY cfo.sort_order ASC
       `),
   ]);
 
-  // Attach options to their fields
   const optMap = {};
   options.recordset.forEach(o => {
     if (!optMap[o.field_definition_id]) optMap[o.field_definition_id] = [];
@@ -303,7 +316,7 @@ router.get('/custom-fields', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/products/custom-fields
-router.post('/custom-fields', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/custom-fields', requirePermission('custom_fields', 'write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const {
     field_key, field_label, field_type = 'text', placeholder, help_text,
@@ -1083,24 +1096,32 @@ router.delete('/:id/documents/:docId', requirePermission('products','update'), a
 
 // ────────────────────────────────────────────────────────────────
 // GET /api/products/:id/custom-values
+// Pass ?scope_key=<category_id> to get scoped values too
 // ────────────────────────────────────────────────────────────────
 router.get('/:id/custom-values', requirePermission('products','read'), asyncHandler(async (req, res) => {
   await poolConnect;
   const productId = parseInt(req.params.id);
+  const scopeKey  = req.query.scope_key != null ? String(req.query.scope_key) : null;
+
+  const scopeFilter = scopeKey
+    ? 'AND (cfd.scope_key IS NULL OR cfd.scope_key = @scope_key)'
+    : '';
 
   const rows = await pool.request()
-    .input('entity_key', sql.VarChar(100), 'product')
-    .input('entity_id',  sql.BigInt,       productId)
-    .input('org_id',     sql.Int,          req.user.orgId)
+    .input('entity_key', sql.VarChar(100),  'product')
+    .input('entity_id',  sql.BigInt,        productId)
+    .input('org_id',     sql.Int,           req.user.orgId)
+    .input('scope_key',  sql.NVarChar(100), scopeKey)
     .query(`
       SELECT cfv.id, cfv.field_definition_id, cfd.field_key, cfd.field_label, cfd.field_type,
              cfv.value_text, cfv.value_number, cfv.value_date, cfv.value_boolean, cfv.value_json
       FROM custom_field_values cfv
       INNER JOIN custom_field_definitions cfd ON cfd.id = cfv.field_definition_id
       WHERE cfv.entity_key = @entity_key AND cfv.entity_id = @entity_id AND cfv.org_id = @org_id
+        AND cfd.entity_key = 'product' AND cfd.is_active = 1
+        ${scopeFilter}
     `);
 
-  // Return as map: { field_key: value }
   const values = {};
   rows.recordset.forEach(r => {
     values[r.field_key] = r.value_text ?? r.value_number ?? r.value_date ?? r.value_boolean ?? r.value_json;
@@ -1114,17 +1135,23 @@ router.put('/:id/custom-values', requirePermission('products','update'), asyncHa
   await poolConnect;
   const productId = parseInt(req.params.id);
   const orgId     = req.user.orgId;
-  const { values } = req.body; // { field_key: value }
+  const { values, scope_key } = req.body; // scope_key = category_id as string
 
   if (!values || typeof values !== 'object') {
     return res.status(400).json({ success: false, error: 'values object required.' });
   }
 
-  // Get field definitions
+  const scopeKey = scope_key != null ? String(scope_key) : null;
+  const scopeFilter = scopeKey
+    ? 'AND (scope_key IS NULL OR scope_key = @scope_key)'
+    : '';
+
+  // Get field definitions scoped correctly
   const defs = await pool.request()
-    .input('org_id',     sql.Int,          orgId)
-    .input('entity_key', sql.VarChar(100), 'product')
-    .query('SELECT id, field_key, field_type FROM custom_field_definitions WHERE org_id=@org_id AND entity_key=@entity_key AND is_active=1');
+    .input('org_id',     sql.Int,           orgId)
+    .input('entity_key', sql.VarChar(100),  'product')
+    .input('scope_key',  sql.NVarChar(100), scopeKey)
+    .query(`SELECT id, field_key, field_type FROM custom_field_definitions WHERE org_id=@org_id AND entity_key=@entity_key AND is_active=1 ${scopeFilter}`);
 
   const defMap = {};
   defs.recordset.forEach(d => { defMap[d.field_key] = d; });

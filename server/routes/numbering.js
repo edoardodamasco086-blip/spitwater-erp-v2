@@ -16,6 +16,7 @@ const router  = express.Router();
 
 const { sql, pool, poolConnect }     = require('../config/db');
 const { requireAuth, requireRole }   = require('../middleware/auth');
+const { requirePermission }          = require('../middleware/permissions');
 const { asyncHandler }               = require('../middleware/errorHandler');
 const { getNextNumber, previewNumber, formatNumber, getCurrentFinancialYear, ensureColumns } = require('../utils/numbering');
 const logger                         = require('../config/logger');
@@ -130,7 +131,7 @@ router.post('/next/:type', asyncHandler(async (req, res) => {
 // POST /api/numbering/seed-defaults
 // Seeds all standard Australian series in one click
 // ────────────────────────────────────────────────────────────────
-router.post('/seed-defaults', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/seed-defaults', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await ensureOnce();
 
@@ -195,7 +196,7 @@ router.post('/seed-defaults', requireRole('admin'), asyncHandler(async (req, res
 // ────────────────────────────────────────────────────────────────
 // POST /api/numbering
 // ────────────────────────────────────────────────────────────────
-router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await ensureOnce();
 
@@ -256,7 +257,7 @@ router.post('/', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // PATCH /api/numbering/:id
 // ────────────────────────────────────────────────────────────────
-router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await ensureOnce();
 
@@ -309,7 +310,7 @@ router.patch('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 // DELETE /api/numbering/:id  (soft — sets is_active = 0)
 // ────────────────────────────────────────────────────────────────
-router.delete('/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
   // Don't allow deleting if it's the only series for that type
