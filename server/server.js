@@ -30,7 +30,8 @@ const fieldValidationRoutes = require('./routes/field-validation');
 const currencyRoutes        = require('./routes/currency');
 const productUomRoutes      = require('./routes/product-uom');
 const priceListRoutes       = require('./routes/price-lists');
-const productsRoutes    = require('./routes/products');
+const productsRoutes        = require('./routes/products');
+const productSuppliersRoutes = require('./routes/product-suppliers');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -112,9 +113,10 @@ app.use('/api/permissions',  permissionsRoutes);
 app.use('/api/numbering',        numberingRoutes);
 app.use('/api/field-validation', fieldValidationRoutes);
 app.use('/api/currency',         currencyRoutes);
-app.use('/api/product-uom',      productUomRoutes);
-app.use('/api/price-lists',      priceListRoutes);
-app.use('/api/products',     productsRoutes);
+app.use('/api/product-uom',       productUomRoutes);
+app.use('/api/price-lists',       priceListRoutes);
+app.use('/api/products',          productsRoutes);
+app.use('/api/products',          productSuppliersRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

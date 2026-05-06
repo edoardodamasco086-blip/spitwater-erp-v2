@@ -32,7 +32,15 @@ export const productsApi = {
   savePricing: (id, prices) => client.put(`/products/${id}/pricing`, { prices }),
 
   // Stock
-  getStock: (id) => client.get(`/products/${id}/stock`),
+  getStock:       (id) => client.get(`/products/${id}/stock`),
+  uomLockStatus:  (id) => client.get(`/products/${id}/uom-lock-status`),
+
+  // Suppliers per product
+  getSuppliers:       (id)           => client.get(`/products/${id}/suppliers`),
+  addSupplier:        (id, data)     => client.post(`/products/${id}/suppliers`, data),
+  updateSupplier:     (id, sid, data)=> client.patch(`/products/${id}/suppliers/${sid}`, data),
+  deleteSupplier:     (id, sid)      => client.delete(`/products/${id}/suppliers/${sid}`),
+  setPreferredSupplier:(id, sid)     => client.patch(`/products/${id}/suppliers/${sid}/set-preferred`),
 
   // Images — uses FormData
   uploadImage: (id, file, altText) => {

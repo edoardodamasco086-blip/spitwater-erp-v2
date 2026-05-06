@@ -28,7 +28,8 @@ const express = require('express');
 const router  = express.Router();
 
 const { sql, pool, poolConnect }   = require('../config/db');
-const { requireAuth, requireRole, requireMinRole } = require('../middleware/auth');
+const { requireAuth }              = require('../middleware/auth');
+const { requirePermission }        = require('../middleware/permissions');
 const { asyncHandler }             = require('../middleware/errorHandler');
 const { getRate }                  = require('../services/currencyService');
 
@@ -53,7 +54,7 @@ router.get('/tiers', asyncHandler(async (req, res) => {
   return res.json({ success: true, data: rows.recordset });
 }));
 
-router.post('/tiers', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/tiers', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, description, color, discount_pct, sort_order } = req.body;
   if (!name) return res.status(400).json({ success: false, error: 'name required.' });
@@ -73,7 +74,7 @@ router.post('/tiers', requireRole('admin'), asyncHandler(async (req, res) => {
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id } });
 }));
 
-router.patch('/tiers/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.patch('/tiers/:id', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { name, description, color, discount_pct, is_active, sort_order } = req.body;
   await pool.request()
@@ -98,7 +99,7 @@ router.patch('/tiers/:id', requireRole('admin'), asyncHandler(async (req, res) =
   return res.json({ success: true, message: 'Tier updated.' });
 }));
 
-router.delete('/tiers/:id', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/tiers/:id', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const id = parseInt(req.params.id);
   const count = await pool.request().input('id', sql.Int, id)
@@ -126,7 +127,7 @@ router.get('/tiers/:id/contacts', asyncHandler(async (req, res) => {
   return res.json({ success: true, data: rows.recordset });
 }));
 
-router.post('/tiers/:id/contacts', requireRole('admin'), asyncHandler(async (req, res) => {
+router.post('/tiers/:id/contacts', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { contactId } = req.body;
   if (!contactId) return res.status(400).json({ success: false, error: 'contactId required.' });
@@ -148,7 +149,7 @@ router.post('/tiers/:id/contacts', requireRole('admin'), asyncHandler(async (req
   return res.json({ success: true, message: 'Contact assigned to tier.' });
 }));
 
-router.delete('/tiers/:id/contacts/:contactId', requireRole('admin'), asyncHandler(async (req, res) => {
+router.delete('/tiers/:id/contacts/:contactId', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request()
     .input('org_id',     sql.Int, req.user.orgId)
@@ -180,7 +181,7 @@ router.get('/:productId', asyncHandler(async (req, res) => {
   return res.json({ success: true, data: rows.recordset });
 }));
 
-router.post('/:productId', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.post('/:productId', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const productId = parseInt(req.params.productId);
   const {
@@ -226,7 +227,7 @@ router.post('/:productId', requireMinRole('editor'), asyncHandler(async (req, re
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id, barcode: finalBarcode } });
 }));
 
-router.patch('/:productId/:id', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.patch('/:productId/:id', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { uom_role, qty_in_base, barcode, weight_kg, length_cm, width_cm, height_cm, is_active } = req.body;
   await pool.request()
@@ -254,7 +255,7 @@ router.patch('/:productId/:id', requireMinRole('editor'), asyncHandler(async (re
   return res.json({ success: true, message: 'UOM conversion updated.' });
 }));
 
-router.delete('/:productId/:id', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.delete('/:productId/:id', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request().input('id', sql.Int, parseInt(req.params.id))
     .query('DELETE FROM product_uom_conversions WHERE id=@id');
@@ -278,7 +279,7 @@ router.get('/:productId/supplier-prices', asyncHandler(async (req, res) => {
       FROM product_supplier_prices sp
       INNER JOIN contacts c   ON c.id   = sp.contact_id
       INNER JOIN units_of_measure uom ON uom.id = sp.uom_id
-      WHERE sp.product_id = @product_id AND sp.org_id = @org_id
+      WHERE sp.product_id = @product_id AND sp.org_id = @org_id AND sp.is_active = 1
       ORDER BY sp.is_active DESC, c.full_name ASC, uom.code ASC
     `);
 
@@ -295,7 +296,7 @@ router.get('/:productId/supplier-prices', asyncHandler(async (req, res) => {
   return res.json({ success: true, data });
 }));
 
-router.post('/:productId/supplier-prices', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.post('/:productId/supplier-prices', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { contact_id, uom_id, unit_price, currency_code = 'AUD', min_order_qty = 1, lead_time_days, valid_from, valid_to, notes } = req.body;
   if (!contact_id || !uom_id || unit_price == null) return res.status(400).json({ success: false, error: 'contact_id, uom_id and unit_price required.' });
@@ -322,7 +323,7 @@ router.post('/:productId/supplier-prices', requireMinRole('editor'), asyncHandle
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id } });
 }));
 
-router.patch('/:productId/supplier-prices/:id', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.patch('/:productId/supplier-prices/:id', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const { unit_price, currency_code, min_order_qty, lead_time_days, valid_from, valid_to, is_active, notes } = req.body;
   await pool.request()
@@ -351,7 +352,7 @@ router.patch('/:productId/supplier-prices/:id', requireMinRole('editor'), asyncH
   return res.json({ success: true, message: 'Supplier price updated.' });
 }));
 
-router.delete('/:productId/supplier-prices/:id', requireMinRole('editor'), asyncHandler(async (req, res) => {
+router.delete('/:productId/supplier-prices/:id', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request().input('id', sql.Int, parseInt(req.params.id))
     .query('UPDATE product_supplier_prices SET is_active=0 WHERE id=@id');

@@ -144,7 +144,7 @@ export default function ExchangeRatesPage() {
                 const isToday     = c.rate_date?.slice(0, 10) === today;
                 const isManual    = false; // would need source field
                 const rateDisplay = c.rate_to_base
-                  ? (1 / parseFloat(c.rate_to_base)).toFixed(6)
+                  ? parseFloat(c.rate_to_base).toFixed(6)
                   : null;
 
                 return (
@@ -248,7 +248,7 @@ export default function ExchangeRatesPage() {
                               </thead>
                               <tbody>
                                 {history.rows.map((row, i) => {
-                                  const fwd = (1 / parseFloat(row.rate)).toFixed(6);
+                                  const fwd = parseFloat(row.rate).toFixed(6);
                                   const isCurrentDay = row.rate_date?.slice(0,10) === today;
                                   return (
                                     <tr key={i} style={{ background: isCurrentDay ? 'rgba(47,127,232,0.06)' : 'transparent' }}>

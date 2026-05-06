@@ -6,12 +6,14 @@ import { useFieldValidation } from '../../hooks/useFieldValidation';
 import styles from './ProductDetailPage.module.css';
 
 const TABS = [
-  { key: 'overview',  label: 'Overview'       },
-  { key: 'images',    label: 'Images'         },
-  { key: 'documents', label: 'Documents'      },
-  { key: 'custom',    label: 'Custom Fields'  },
-  { key: 'pricing',   label: 'Pricing'        },
-  { key: 'stock',     label: 'Stock'          },
+  { key: 'overview',   label: 'Overview'       },
+  { key: 'suppliers',  label: 'Suppliers'      },
+  { key: 'packaging',  label: 'Packaging'      },
+  { key: 'images',     label: 'Images'         },
+  { key: 'documents',  label: 'Documents'      },
+  { key: 'custom',     label: 'Custom Fields'  },
+  { key: 'pricing',    label: 'Pricing'        },
+  { key: 'stock',      label: 'Stock'          },
 ];
 
 function formatCurrency(v) {
@@ -58,11 +60,13 @@ export default function ProductDetailPage() {
   const [loading,      setLoading]      = useState(!isNew);
   const [uomConversions, setUomConversions] = useState([]);
   const [supplierPrices, setSupplierPrices] = useState([]);
+  const [productSuppliers, setProductSuppliers] = useState([]);
   const [currencies,     setCurrencies]     = useState([]);
   const [saving,       setSaving]       = useState(false);
   const [activeTab,    setActiveTab]    = useState('overview');
   const [error,        setError]        = useState('');
   const [success,      setSuccess]      = useState('');
+  const [uomLock,      setUomLock]      = useState({ locked: false, reasons: [] });
 
   // Form state for overview
   const [form, setForm] = useState({
@@ -135,13 +139,15 @@ export default function ProductDetailPage() {
   async function loadProduct() {
     setLoading(true);
     try {
-      const [prodRes, cvRes, pricingRes, stockRes, uomRes, suppRes] = await Promise.all([
+      const [prodRes, cvRes, pricingRes, stockRes, uomRes, suppRes, lockRes, suppliersRes] = await Promise.all([
         productsApi.get(id),
         productsApi.getCustomValues(id),
         productsApi.getPricing(id),
         productsApi.getStock(id),
         productUomApi.list(id).catch(() => ({ data: { data: [] } })),
         productUomApi.listSupplierPrices(id).catch(() => ({ data: { data: [] } })),
+        productsApi.uomLockStatus(id).catch(() => ({ data: { data: { locked: false, reasons: [] } } })),
+        productsApi.getSuppliers(id).catch(() => ({ data: { data: [] } })),
       ]);
       const p = prodRes.data.data;
       setProduct(p);
@@ -150,6 +156,8 @@ export default function ProductDetailPage() {
       setCustomValues(cvRes.data.data || {});
       setUomConversions(uomRes.data.data || []);
       setSupplierPrices(suppRes.data.data || []);
+      setUomLock(lockRes.data.data || { locked: false, reasons: [] });
+      setProductSuppliers(suppliersRes.data.data || []);
       // Populate form
       setForm({
         name:                    p.name || '',
@@ -209,12 +217,8 @@ export default function ProductDetailPage() {
         ...cleaned,
         category_id:             form.category_id            || null,
         base_uom_id:             form.base_uom_id            || null,
-        preferred_supplier_id:   form.preferred_supplier_id  || null,
         default_sales_price:     parseFloat(form.default_sales_price)    || 0,
         default_purchase_price:  parseFloat(form.default_purchase_price) || 0,
-        lead_time_days:          parseInt(form.lead_time_days)  || 0,
-        min_order_qty:           parseFloat(form.min_order_qty) || 1,
-        order_multiple:          parseFloat(form.order_multiple)|| 1,
         min_stock_level:         parseFloat(form.min_stock_level)|| 0,
         max_stock_level:         parseFloat(form.max_stock_level)|| 0,
         reorder_qty:             parseFloat(form.reorder_qty)   || 0,
@@ -469,12 +473,19 @@ export default function ProductDetailPage() {
 
                   {/* Unit of Measure */}
                   <div className="form-group">
-                    <label className="form-label">
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       Unit of Measure {isRequired('base_uom_id') && <span className="req-star">*</span>}
+                      {!isNew && uomLock.locked && (
+                        <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 600, background: '#fef3cd', color: '#856404', border: '1px solid #ffc107', borderRadius: 4, padding: '1px 6px', letterSpacing: '0.04em' }}>
+                          🔒 LOCKED
+                        </span>
+                      )}
                     </label>
                     <select
                       className={['form-input', fieldErrors.base_uom_id ? 'input-error' : ''].join(' ')}
                       value={form.base_uom_id}
+                      disabled={!isNew && uomLock.locked}
+                      style={!isNew && uomLock.locked ? { opacity: 0.65, cursor: 'not-allowed', background: 'var(--bg)' } : {}}
                       onChange={e => { set('base_uom_id', e.target.value); clearErrors('base_uom_id'); }}
                       onBlur={e => liveValidate('base_uom_id', e.target.value)}
                     >
@@ -482,6 +493,11 @@ export default function ProductDetailPage() {
                       {uoms.map(u => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
                     </select>
                     {fieldErrors.base_uom_id && <div className="field-error">{fieldErrors.base_uom_id}</div>}
+                    {!isNew && uomLock.locked && (
+                      <div style={{ marginTop: 5, fontSize: 11, color: '#856404', background: '#fffbea', border: '1px solid #ffc10730', borderRadius: 5, padding: '5px 8px', lineHeight: 1.5 }}>
+                        <strong>Why locked?</strong> {uomLock.reasons.join(' · ')}
+                      </div>
+                    )}
                   </div>
 
                   {/* Tracking */}
@@ -526,22 +542,10 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Purchasing section */}
+              {/* Stock thresholds (kept) */}
               <div className={styles.card}>
-                <div className={styles.cardTitle}>Purchasing & Stock</div>
+                <div className={styles.cardTitle}>Purchasing &amp; Stock</div>
                 <div className={styles.grid3}>
-                  <div className="form-group">
-                    <label className="form-label">Lead time (days)</label>
-                    <input className="form-input" type="number" min="0" value={form.lead_time_days} onChange={e => set('lead_time_days', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Min order qty</label>
-                    <input className="form-input" type="number" step="0.0001" min="0" value={form.min_order_qty} onChange={e => set('min_order_qty', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Order multiple</label>
-                    <input className="form-input" type="number" step="0.0001" min="0" value={form.order_multiple} onChange={e => set('order_multiple', e.target.value)} />
-                  </div>
                   <div className="form-group">
                     <label className="form-label">Min stock level</label>
                     <input className="form-input" type="number" step="0.0001" min="0" value={form.min_stock_level} onChange={e => set('min_stock_level', e.target.value)} />
@@ -555,28 +559,15 @@ export default function ProductDetailPage() {
                     <input className="form-input" type="number" step="0.0001" min="0" value={form.reorder_qty} onChange={e => set('reorder_qty', e.target.value)} />
                   </div>
                 </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-sub)', marginTop: 6 }}>
+                  Lead time, MOQ and order multiple are managed per supplier in the <button type="button" className="btn-link" onClick={() => setActiveTab('suppliers')}>Suppliers tab</button>.
+                </div>
               </div>
 
-              {/* Physical / Warranty */}
+              {/* Warranty — kept here, physical moved to Packaging tab */}
               <div className={styles.card}>
-                <div className={styles.cardTitle}>Physical & Warranty</div>
+                <div className={styles.cardTitle}>Warranty</div>
                 <div className={styles.grid4}>
-                  <div className="form-group">
-                    <label className="form-label">Weight (kg)</label>
-                    <input className="form-input" type="number" step="0.0001" min="0" placeholder="0.00" value={form.weight_kg} onChange={e => set('weight_kg', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Length (cm)</label>
-                    <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00" value={form.length_cm} onChange={e => set('length_cm', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Width (cm)</label>
-                    <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00" value={form.width_cm} onChange={e => set('width_cm', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Height (cm)</label>
-                    <input className="form-input" type="number" step="0.01" min="0" placeholder="0.00" value={form.height_cm} onChange={e => set('height_cm', e.target.value)} />
-                  </div>
                   <div className="form-group">
                     <label className="form-label">Warranty (months)</label>
                     <input className="form-input" type="number" min="0" value={form.warranty_months} onChange={e => set('warranty_months', e.target.value)} />
@@ -586,20 +577,10 @@ export default function ProductDetailPage() {
                     <input className="form-input" type="number" min="0" value={form.extended_warranty_months} onChange={e => set('extended_warranty_months', e.target.value)} />
                   </div>
                 </div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-sub)', marginTop: 6 }}>
+                  Physical dimensions and packaging formats are managed in the <button type="button" className="btn-link" onClick={() => setActiveTab('packaging')}>Packaging tab</button>.
+                </div>
               </div>
-
-              {/* UOM Conversions — only shown on existing products */}
-              {!isNew && (
-                <UomConversionsCard
-                  productId={id}
-                  uoms={uoms}
-                  uomConversions={uomConversions}
-                  onReload={async () => {
-                    const r = await productUomApi.list(id);
-                    setUomConversions(r.data.data || []);
-                  }}
-                />
-              )}
             </div>
 
             {/* Right column — meta */}
@@ -608,9 +589,12 @@ export default function ProductDetailPage() {
               {!isNew && (
                 <div className={styles.card}>
                   <div className={styles.cardTitle}>Primary Image</div>
-                  {product?.primary_image_url ? (
-                    <img src={product.primary_image_url} alt={form.name} className={styles.primaryImg} />
-                  ) : (
+                  {product?.primary_image_url ? (() => {
+                    const parts = product.primary_image_url.split('.');
+                    const ext = parts.pop();
+                    const mdUrl = `${parts.join('.')}_md.${ext}`;
+                    return <img src={mdUrl} alt={form.name} className={styles.primaryImg} onError={(e) => { e.target.src = product.primary_image_url; }} />;
+                  })() : (
                     <div className={styles.noImage}>No image yet</div>
                   )}
                   <button type="button" className="btn btn-outline btn-sm" style={{marginTop:10,width:'100%'}} onClick={() => setActiveTab('images')}>
@@ -628,14 +612,33 @@ export default function ProductDetailPage() {
                 </label>
               </div>
 
-              {/* Supplier */}
-              <div className={styles.card}>
-                <div className={styles.cardTitle}>Preferred Supplier</div>
-                <div className="form-group">
-                  <label className="form-label">Supplier part number</label>
-                  <input className="form-input" value={form.supplier_part_number} onChange={e => set('supplier_part_number', e.target.value)} placeholder="MFR-SKU-1234" style={{ fontFamily: 'DM Mono' }} />
-                </div>
-              </div>
+              {/* Preferred Supplier — read-only, managed via Suppliers tab */}
+              {!isNew && (() => {
+                const preferred = productSuppliers.find(s => s.is_preferred) || productSuppliers[0];
+                return (
+                  <div className={styles.card}>
+                    <div className={styles.cardTitle}>Preferred Supplier</div>
+                    {preferred ? (
+                      <>
+                        <div style={{ fontWeight: 600, fontSize: 13.5, marginBottom: 4 }}>{preferred.supplier_name}</div>
+                        {preferred.supplier_part_number && (
+                          <div style={{ fontFamily: 'DM Mono', fontSize: 12, color: 'var(--text-sub)', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', display: 'inline-block', marginBottom: 6 }}>
+                            {preferred.supplier_part_number}
+                          </div>
+                        )}
+                        {preferred.lead_time_days > 0 && (
+                          <div style={{ fontSize: 12, color: 'var(--text-sub)' }}>Lead time: {preferred.lead_time_days} day{preferred.lead_time_days !== 1 ? 's' : ''}</div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 13, color: 'var(--text-sub)' }}>No supplier linked yet.</div>
+                    )}
+                    <button type="button" className="btn btn-outline btn-sm" style={{ width: '100%', marginTop: 10 }} onClick={() => setActiveTab('suppliers')}>
+                      Manage suppliers
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Save button */}
               <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving || !form.name.trim()}>
@@ -667,18 +670,24 @@ export default function ProductDetailPage() {
               <div className={styles.emptyTab}>No images uploaded yet.</div>
             ) : (
               <div className={styles.imageGrid}>
-                {images.map(img => (
-                  <div key={img.id} className={[styles.imageCard, img.is_primary ? styles.imagePrimary : ''].join(' ')}>
-                    <img src={img.image_url} alt={img.alt_text || form.name} className={styles.imagePreview} />
-                    {img.is_primary && <div className={styles.primaryBadge}>Primary</div>}
-                    <div className={styles.imageActions}>
-                      {!img.is_primary && (
-                        <button className="btn btn-outline btn-sm" onClick={() => handleSetPrimary(img.id)}>Set primary</button>
-                      )}
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDeleteImage(img.id)}>Delete</button>
+                {images.map(img => {
+                  const parts = img.image_url.split('.');
+                  const ext = parts.pop();
+                  const mdUrl = `${parts.join('.')}_md.${ext}`;
+                  return (
+                    <div key={img.id} className={[styles.imageCard, img.is_primary ? styles.imagePrimary : ''].join(' ')}>
+                      <img src={mdUrl} alt={img.alt_text || form.name} className={styles.imagePreview} onError={(e) => { e.target.src = img.image_url; }} />
+                      {img.is_primary && <div className={styles.primaryBadge}>Primary</div>}
+                      <div className={styles.imageActions}>
+                        {!img.is_primary && (
+                          <button className="btn btn-outline btn-sm" onClick={() => handleSetPrimary(img.id)}>Set primary</button>
+                        )}
+                        <a href={img.image_url} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm" style={{textDecoration:'none',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>Download</a>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteImage(img.id)}>Delete</button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -793,6 +802,7 @@ export default function ProductDetailPage() {
           <div className={styles.tabContent}>
             <PricingTab
               productId={id}
+              baseUomId={form.base_uom_id}
               pricing={pricing}
               setPricing={setPricing}
               uomConversions={uomConversions}
@@ -803,6 +813,7 @@ export default function ProductDetailPage() {
               saving={saving}
               onSavePricing={handleSavePricing}
               navigate={navigate}
+              productSuppliers={productSuppliers}
               onReloadSupplier={async () => {
                 const r = await productUomApi.listSupplierPrices(id);
                 setSupplierPrices(r.data.data || []);
@@ -860,6 +871,38 @@ export default function ProductDetailPage() {
             )}
           </div>
         )}
+        {/* ── SUPPLIERS TAB ── */}
+        {!isNew && activeTab === 'suppliers' && (
+          <div className={styles.tabContent}>
+            <SuppliersTab
+              productId={id}
+              productSuppliers={productSuppliers}
+              onReload={async () => {
+                const r = await productsApi.getSuppliers(id);
+                setProductSuppliers(r.data.data || []);
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── PACKAGING TAB ── */}
+        {!isNew && activeTab === 'packaging' && (
+          <div className={styles.tabContent}>
+            <PackagingTab
+              productId={id}
+              uoms={uoms}
+              uomConversions={uomConversions}
+              baseUom={uoms.find(u => u.id === parseInt(form.base_uom_id))}
+              productForm={form}
+              onSaveProduct={handleSave}
+              saving={saving}
+              onReload={async () => {
+                const r = await productUomApi.list(id);
+                setUomConversions(r.data.data || []);
+              }}
+            />
+          </div>
+        )}
 
       </div>
     </div>
@@ -885,31 +928,240 @@ function DocIcon({ mime }) {
 function SvgIcon({ children, size = 15 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 }
-function ArrowIcon()  { return <SvgIcon><polyline points="15 18 9 12 15 6"/></SvgIcon>; }
-function AlertIcon()  { return <SvgIcon size={14}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></SvgIcon>; }
-function UploadIcon() { return <SvgIcon><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></SvgIcon>; }
-function PlusIcon()   { return <SvgIcon><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></SvgIcon>; }
-function TrashIcon()  { return <SvgIcon size={13}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></SvgIcon>; }
+function ArrowIcon()    { return <SvgIcon><polyline points="15 18 9 12 15 6"/></SvgIcon>; }
+function AlertIcon()    { return <SvgIcon size={14}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></SvgIcon>; }
+function UploadIcon()   { return <SvgIcon><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></SvgIcon>; }
+function PlusIcon()     { return <SvgIcon><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></SvgIcon>; }
+function TrashIcon()    { return <SvgIcon size={13}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></SvgIcon>; }
+function PlusSmIcon()   { return <SvgIcon size={13}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></SvgIcon>; }
+function TrashSmIcon()  { return <SvgIcon size={12}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></SvgIcon>; }
+
+// ── SuppliersTab ─────────────────────────────────────────────
+function SuppliersTab({ productId, productSuppliers, onReload }) {
+  const PILL = { purchase: 'pill-green', sales: 'pill-orange', other: 'pill-grey' };
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [edits,    setEdits]    = useState({});
+  const [saving2,  setSaving2]  = useState({});
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [addSaving,setAddSaving]= useState(false);
+  const [addErr,   setAddErr]   = useState('');
+  const [newRow,   setNewRow]   = useState({ contact_id: '', supplier_part_number: '', lead_time_days: '', min_order_qty: '', order_multiple: '', notes: '' });
+
+  useEffect(() => {
+    fetch('/api/contacts?type=supplier&limit=500', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+      .then(r => r.json()).then(d => setAllSuppliers(d.data || [])).catch(() => {});
+  }, []);
+
+  const linkedIds = new Set(productSuppliers.map(s => s.contact_id));
+  const available = allSuppliers.filter(s => !linkedIds.has(s.id));
+
+  function startEdit(s) {
+    setEdits(e => ({ ...e, [s.id]: {
+      supplier_part_number: s.supplier_part_number || '',
+      lead_time_days:  String(s.lead_time_days ?? ''),
+      min_order_qty:   String(s.min_order_qty  ?? ''),
+      order_multiple:  String(s.order_multiple ?? ''),
+      notes:           s.notes || '',
+    }}));
+  }
+  function cancelEdit(id) { setEdits(e => { const n={...e}; delete n[id]; return n; }); }
+  function setField(id, field, val) { setEdits(e => ({ ...e, [id]: { ...e[id], [field]: val } })); }
+
+  async function saveEdit(s) {
+    const d = edits[s.id];
+    setSaving2(sv => ({ ...sv, [s.id]: true }));
+    try {
+      await productsApi.updateSupplier(productId, s.id, {
+        supplier_part_number: d.supplier_part_number || null,
+        lead_time_days:  d.lead_time_days !== '' ? parseInt(d.lead_time_days) : 0,
+        min_order_qty:   d.min_order_qty  !== '' ? parseFloat(d.min_order_qty) : 1,
+        order_multiple:  d.order_multiple !== '' ? parseFloat(d.order_multiple) : 1,
+        notes:           d.notes || null,
+      });
+      cancelEdit(s.id);
+      await onReload();
+    } catch(e) { alert(e.response?.data?.error || 'Save failed.'); }
+    finally { setSaving2(sv => ({ ...sv, [s.id]: false })); }
+  }
+
+  async function handleSetPreferred(id) {
+    try { await productsApi.setPreferredSupplier(productId, id); await onReload(); }
+    catch(e) { alert(e.response?.data?.error || 'Failed to set default.'); }
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Remove this supplier from this product?')) return;
+    try { await productsApi.deleteSupplier(productId, id); await onReload(); }
+    catch(e) { alert(e.response?.data?.error || 'Remove failed.'); }
+  }
+
+  async function handleAdd() {
+    if (!newRow.contact_id) { setAddErr('Please select a supplier.'); return; }
+    setAddSaving(true); setAddErr('');
+    try {
+      await productsApi.addSupplier(productId, {
+        contact_id:          parseInt(newRow.contact_id),
+        supplier_part_number:newRow.supplier_part_number || null,
+        lead_time_days:      newRow.lead_time_days !== '' ? parseInt(newRow.lead_time_days) : 0,
+        min_order_qty:       newRow.min_order_qty  !== '' ? parseFloat(newRow.min_order_qty) : 1,
+        order_multiple:      newRow.order_multiple !== '' ? parseFloat(newRow.order_multiple) : 1,
+        notes:               newRow.notes || null,
+        is_preferred:        productSuppliers.length === 0, // first one auto-preferred
+      });
+      setNewRow({ contact_id: '', supplier_part_number: '', lead_time_days: '', min_order_qty: '', order_multiple: '', notes: '' });
+      setShowAdd(false);
+      await onReload();
+    } catch(e) { setAddErr(e.response?.data?.error || 'Failed to add supplier.'); }
+    finally { setAddSaving(false); }
+  }
+
+  const inputS = { background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 12, width: '100%' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Linked Suppliers</div>
+          <div style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 2 }}>Manage which suppliers provide this product, with per-supplier terms.</div>
+        </div>
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowAdd(v => !v); setAddErr(''); }}>
+          <PlusSmIcon /> Add supplier
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{ padding: '16px 18px', background: 'var(--accent-dim)', border: '1px solid rgba(47,127,232,0.15)', borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 10 }}>Link a new supplier</div>
+          {addErr && <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{addErr}</div>}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+            <div className="form-group" style={{ flex: '3 1 180px', marginBottom: 0 }}>
+              <label className="form-label">Supplier *</label>
+              <select className="form-input" value={newRow.contact_id} onChange={e => setNewRow(r => ({...r, contact_id: e.target.value}))}>
+                <option value="">Select supplier...</option>
+                {available.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: '2 1 130px', marginBottom: 0 }}>
+              <label className="form-label">Supplier part number</label>
+              <input style={inputS} placeholder="MFR-SKU-001" value={newRow.supplier_part_number} onChange={e => setNewRow(r => ({...r, supplier_part_number: e.target.value}))} />
+            </div>
+            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+              <label className="form-label">Lead time (days)</label>
+              <input style={inputS} type="number" min="0" placeholder="0" value={newRow.lead_time_days} onChange={e => setNewRow(r => ({...r, lead_time_days: e.target.value}))} />
+            </div>
+            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+              <label className="form-label">Min order qty</label>
+              <input style={inputS} type="number" step="0.0001" min="0" placeholder="1" value={newRow.min_order_qty} onChange={e => setNewRow(r => ({...r, min_order_qty: e.target.value}))} />
+            </div>
+            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+              <label className="form-label">Order multiple</label>
+              <input style={inputS} type="number" step="0.0001" min="0" placeholder="1" value={newRow.order_multiple} onChange={e => setNewRow(r => ({...r, order_multiple: e.target.value}))} />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: 10 }}>
+            <label className="form-label">Notes</label>
+            <textarea style={{...inputS, minHeight: 56, resize: 'vertical'}} placeholder="Internal notes about this supplier..." value={newRow.notes} onChange={e => setNewRow(r => ({...r, notes: e.target.value}))} />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={addSaving || !newRow.contact_id} onClick={handleAdd}>{addSaving ? '...' : 'Link supplier'}</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAdd(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* List */}
+      {productSuppliers.length === 0 && !showAdd ? (
+        <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-sub)', fontSize: 13, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8 }}>
+          No suppliers linked yet. Click "Add supplier" to start.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {productSuppliers.map(s => {
+            const isEditing = Boolean(edits[s.id]);
+            const d = edits[s.id] || {};
+            return (
+              <div key={s.id} style={{ border: `2px solid ${s.is_preferred ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: s.is_preferred ? 'rgba(47,127,232,0.05)' : 'var(--card)', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{s.supplier_name}</div>
+                    {s.supplier_code && <div style={{ fontSize: 11, color: 'var(--text-sub)' }}>{s.supplier_code}</div>}
+                  </div>
+                  {s.is_preferred && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent)', color: '#fff', borderRadius: 5, padding: '2px 8px', letterSpacing: '0.05em' }}>⭐ DEFAULT</span>}
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    {!s.is_preferred && <button type="button" className="btn btn-outline btn-sm" onClick={() => handleSetPreferred(s.id)}>Set as default</button>}
+                    {!isEditing
+                      ? <button type="button" className="btn btn-outline btn-sm" onClick={() => startEdit(s)}>Edit</button>
+                      : <>
+                          <button type="button" className="btn btn-primary btn-sm" disabled={saving2[s.id]} onClick={() => saveEdit(s)}>{saving2[s.id] ? '...' : 'Save'}</button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => cancelEdit(s.id)}>Cancel</button>
+                        </>}
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}><TrashSmIcon /></button>
+                  </div>
+                </div>
+
+                {/* Details / edit */}
+                {!isEditing ? (
+                  <div style={{ padding: '10px 16px', background: 'rgba(240,244,249,0.4)', borderTop: '1px solid var(--border)', display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12 }}>
+                    <div><span style={{ color: 'var(--text-sub)' }}>Part #: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{s.supplier_part_number || <span style={{ color: 'var(--text-sub)' }}>—</span>}</span></div>
+                    <div><span style={{ color: 'var(--text-sub)' }}>Lead time: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{s.lead_time_days > 0 ? `${s.lead_time_days} day${s.lead_time_days !== 1 ? 's' : ''}` : '—'}</span></div>
+                    <div><span style={{ color: 'var(--text-sub)' }}>MOQ: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{parseFloat(s.min_order_qty) || '—'}</span></div>
+                    <div><span style={{ color: 'var(--text-sub)' }}>Order ×: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{parseFloat(s.order_multiple) || '—'}</span></div>
+                    {s.notes && <div style={{ flexBasis: '100%', color: 'var(--text-sub)', fontStyle: 'italic' }}>{s.notes}</div>}
+                  </div>
+                ) : (
+                  <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'rgba(47,127,232,0.02)' }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <div className="form-group" style={{ flex: '2 1 140px', marginBottom: 0 }}>
+                        <label className="form-label">Supplier part number</label>
+                        <input style={inputS} placeholder="MFR-SKU-001" value={d.supplier_part_number} onChange={e => setField(s.id, 'supplier_part_number', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+                        <label className="form-label">Lead time (days)</label>
+                        <input style={inputS} type="number" min="0" value={d.lead_time_days} onChange={e => setField(s.id, 'lead_time_days', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+                        <label className="form-label">Min order qty</label>
+                        <input style={inputS} type="number" step="0.0001" min="0" value={d.min_order_qty} onChange={e => setField(s.id, 'min_order_qty', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
+                        <label className="form-label">Order multiple</label>
+                        <input style={inputS} type="number" step="0.0001" min="0" value={d.order_multiple} onChange={e => setField(s.id, 'order_multiple', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Notes</label>
+                      <textarea style={{...inputS, minHeight: 56, resize: 'vertical'}} value={d.notes} onChange={e => setField(s.id, 'notes', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── PricingTab ─────────────────────────────────────────────────
-function PricingTab({ productId, pricing, setPricing, uomConversions, supplierPrices,
-  setSupplierPrices, uoms, currencies, saving, onSavePricing, navigate, onReloadSupplier }) {
+function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions, supplierPrices,
+  setSupplierPrices, uoms, currencies, saving, onSavePricing, navigate, onReloadSupplier, productSuppliers }) {
 
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ contact_id: '', uom_id: '', unit_price: '', currency_code: 'AUD', min_order_qty: 1, lead_time_days: '', notes: '' });
-  const [suppliers, setSuppliers] = useState([]);
   const [savingSupp, setSavingSupp] = useState(false);
 
-  // Load suppliers (contacts of type supplier)
-  useEffect(() => {
-    fetch('/api/contacts?type=supplier&limit=200', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
-      .then(r => r.json()).then(d => setSuppliers(d.data || [])).catch(() => {});
-  }, []);
+  // Suppliers filtered to only those linked to this product
+  const suppliers = productSuppliers || [];
 
   // Available UOMs = base + all conversions
-  const allUoms = [
-    ...uoms.filter(u => uomConversions.find(c => c.uom_id === u.id || c.uom_role === 'base') || true),
-  ].filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
+  const allUoms = uoms.filter(u => 
+    u.id === parseInt(baseUomId) || 
+    uomConversions.some(c => c.uom_id === u.id)
+  );
 
   const activeCurrencies = currencies.filter(c => c.is_active);
 
@@ -931,8 +1183,12 @@ function PricingTab({ productId, pricing, setPricing, uomConversions, supplierPr
 
   async function handleRemoveSupplierPrice(suppId) {
     if (!confirm('Remove this supplier price?')) return;
-    await productUomApi.removeSupplierPrice(productId, suppId);
-    await onReloadSupplier();
+    try {
+      await productUomApi.removeSupplierPrice(productId, suppId);
+      await onReloadSupplier();
+    } catch(err) {
+      alert(err.response?.data?.error || err.message || 'Failed to remove supplier price.');
+    }
   }
 
   const baseCurrency = currencies.find(c => c.is_base)?.code || 'AUD';
@@ -1039,14 +1295,14 @@ function PricingTab({ productId, pricing, setPricing, uomConversions, supplierPr
               <label className="form-label">Supplier *</label>
               <select className="form-input" value={newSupplier.contact_id} onChange={e => setNewSupplier(s => ({...s, contact_id: e.target.value}))}>
                 <option value="">Select supplier...</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                {suppliers.map(s => <option key={s.contact_id} value={s.contact_id}>{s.supplier_name}</option>)}
               </select>
             </div>
             <div className="form-group" style={{ flex: '1 1 120px' }}>
               <label className="form-label">UOM *</label>
               <select className="form-input" value={newSupplier.uom_id} onChange={e => setNewSupplier(s => ({...s, uom_id: e.target.value}))}>
                 <option value="">Select UOM...</option>
-                {uoms.map(u => <option key={u.id} value={u.id}>{u.code}</option>)}
+                {allUoms.map(u => <option key={u.id} value={u.id}>{u.code}</option>)}
               </select>
             </div>
             <div className="form-group" style={{ flex: '1 1 100px' }}>
@@ -1117,12 +1373,273 @@ function PricingTab({ productId, pricing, setPricing, uomConversions, supplierPr
   );
 }
 
-// ── Shared icon helper ─────────────────────────────────────────
-function ic(p) { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{p}</svg>; }
-function PlusSmIcon()  { return ic(<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>); }
-function TrashSmIcon() { return ic(<><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></>); }
-
 // ── UOM Conversions Card ───────────────────────────────────────
+// ── PackagingTab ─────────────────────────────────────────────────
+function PackagingTab({ productId, uoms, uomConversions, baseUom, productForm, onSaveProduct, saving, onReload }) {
+  const ROLE_LABELS = { base: 'Base', purchase: 'Purchase', sales: 'Sales', other: 'Other' };
+  const ROLE_PILLS  = { base: 'pill-blue', purchase: 'pill-green', sales: 'pill-orange', other: 'pill-grey' };
+
+  // inline-edit state: { [id]: { ...fields } } — null means collapsed
+  const [edits,   setEdits]   = useState({});
+  const [saving2, setSaving2] = useState({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [newRow,  setNewRow]  = useState({ uom_id: '', uom_role: 'purchase', qty_in_base: '', barcode: '', weight_kg: '', length_cm: '', width_cm: '', height_cm: '' });
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError,  setAddError]  = useState('');
+
+  function startEdit(u) {
+    setEdits(e => ({ ...e, [u.id]: {
+      uom_role:   u.uom_role,
+      qty_in_base: String(u.qty_in_base ?? ''),
+      barcode:    u.barcode || '',
+      weight_kg:  String(u.weight_kg ?? ''),
+      length_cm:  String(u.length_cm ?? ''),
+      width_cm:   String(u.width_cm ?? ''),
+      height_cm:  String(u.height_cm ?? ''),
+    }}));
+  }
+  function cancelEdit(id) { setEdits(e => { const n = {...e}; delete n[id]; return n; }); }
+  function setField(id, field, val) { setEdits(e => ({ ...e, [id]: { ...e[id], [field]: val } })); }
+
+  async function saveEdit(id) {
+    const d = edits[id];
+    setSaving2(s => ({ ...s, [id]: true }));
+    try {
+      await productUomApi.update(productId, id, {
+        uom_role:   d.uom_role,
+        qty_in_base: parseFloat(d.qty_in_base) || 1,
+        barcode:    d.barcode || null,
+        weight_kg:  d.weight_kg !== '' ? parseFloat(d.weight_kg) : null,
+        length_cm:  d.length_cm !== '' ? parseFloat(d.length_cm) : null,
+        width_cm:   d.width_cm  !== '' ? parseFloat(d.width_cm)  : null,
+        height_cm:  d.height_cm !== '' ? parseFloat(d.height_cm) : null,
+      });
+      cancelEdit(id);
+      await onReload();
+    } catch(e) { alert(e.response?.data?.error || 'Save failed.'); }
+    finally { setSaving2(s => ({ ...s, [id]: false })); }
+  }
+
+  async function handleRemove(id) {
+    if (!confirm('Remove this packaging unit?')) return;
+    try { await productUomApi.remove(productId, id); await onReload(); }
+    catch(e) { alert(e.response?.data?.error || 'Remove failed.'); }
+  }
+
+  const addedIds     = new Set(uomConversions.map(u => u.uom_id));
+  const availableUoms = uoms.filter(u => !addedIds.has(u.id));
+
+  async function handleAdd() {
+    if (!newRow.uom_id || !newRow.qty_in_base) { setAddError('UOM and quantity are required.'); return; }
+    setAddSaving(true); setAddError('');
+    try {
+      await productUomApi.add(productId, {
+        uom_id:      parseInt(newRow.uom_id),
+        uom_role:    newRow.uom_role,
+        qty_in_base: parseFloat(newRow.qty_in_base),
+        barcode:     newRow.barcode || null,
+        weight_kg:   newRow.weight_kg !== '' ? parseFloat(newRow.weight_kg) : null,
+        length_cm:   newRow.length_cm !== '' ? parseFloat(newRow.length_cm) : null,
+        width_cm:    newRow.width_cm  !== '' ? parseFloat(newRow.width_cm)  : null,
+        height_cm:   newRow.height_cm !== '' ? parseFloat(newRow.height_cm) : null,
+      });
+      setNewRow({ uom_id: '', uom_role: 'purchase', qty_in_base: '', barcode: '', weight_kg: '', length_cm: '', width_cm: '', height_cm: '' });
+      setShowAdd(false);
+      await onReload();
+    } catch(e) { setAddError(e.response?.data?.error || 'Failed to add.'); }
+    finally { setAddSaving(false); }
+  }
+
+  const dimStyle = { width: 90, fontFamily: 'DM Mono', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 12 };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* ── Base unit physical info ─────────────────── */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '18px 20px' }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
+          Base Unit Physical Dimensions
+          {baseUom && <span style={{ marginLeft: 8, fontFamily: 'DM Mono', background: 'var(--accent-dim)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{baseUom.code}</span>}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-sub)', marginBottom: 12 }}>
+          Dimensions for 1 base unit ({baseUom?.name || 'base'}). These are saved with the main product.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          {[['weight_kg','Weight (kg)','0.0001'],['length_cm','Length (cm)','0.01'],['width_cm','Width (cm)','0.01'],['height_cm','Height (cm)','0.01']].map(([field, label, step]) => (
+            <div key={field} className="form-group">
+              <label className="form-label">{label}</label>
+              <input className="form-input" type="number" step={step} min="0" placeholder="0.00"
+                value={productForm[field]}
+                onChange={e => { /* handled by parent form save */ }}
+                readOnly
+                style={{ opacity: 0.7, cursor: 'not-allowed' }}
+              />
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-sub)', marginTop: 8 }}>
+          Edit base unit dimensions in the <button type="button" className="btn-link" onClick={onSaveProduct}>Overview tab → Save changes</button>.
+        </div>
+      </div>
+
+      {/* ── Packaging / UOM conversions ─────────────── */}
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Packaging Formats / UOM Conversions</div>
+            <div style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 2 }}>Define alternative packaging (e.g. BOX100 = 100 each). Each format can have its own physical dimensions.</div>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowAdd(v => !v); setAddError(''); }}>
+            <PlusSmIcon /> Add packaging
+          </button>
+        </div>
+
+        {/* Add form */}
+        {showAdd && (
+          <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--accent-dim)', borderRadius: 8, border: '1px solid rgba(47,127,232,0.15)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, color: 'var(--accent)' }}>New packaging format</div>
+            {addError && <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{addError}</div>}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ flex: '2 1 140px', marginBottom: 0 }}>
+                <label className="form-label">UOM *</label>
+                <select className="form-input" value={newRow.uom_id} onChange={e => setNewRow(r => ({...r, uom_id: e.target.value}))}>
+                  <option value="">Select UOM...</option>
+                  {availableUoms.map(u => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: '1 1 110px', marginBottom: 0 }}>
+                <label className="form-label">Role</label>
+                <select className="form-input" value={newRow.uom_role} onChange={e => setNewRow(r => ({...r, uom_role: e.target.value}))}>
+                  <option value="purchase">Purchase</option>
+                  <option value="sales">Sales</option>
+                  <option value="base">Base (inventory)</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: '0 1 90px', marginBottom: 0 }}>
+                <label className="form-label">Qty in base *</label>
+                <input className="form-input" type="number" step="0.000001" min="0.000001" placeholder="100"
+                  value={newRow.qty_in_base} onChange={e => setNewRow(r => ({...r, qty_in_base: e.target.value}))}
+                  style={{ fontFamily: 'DM Mono' }} />
+              </div>
+              <div className="form-group" style={{ flex: '2 1 130px', marginBottom: 0 }}>
+                <label className="form-label">Barcode (auto if blank)</label>
+                <input className="form-input" placeholder="Auto-generated"
+                  value={newRow.barcode} onChange={e => setNewRow(r => ({...r, barcode: e.target.value}))}
+                  style={{ fontFamily: 'DM Mono' }} />
+              </div>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-sub)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Physical dimensions for this packaging</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {[['weight_kg','Weight (kg)','0.0001'],['length_cm','Length (cm)','0.01'],['width_cm','Width (cm)','0.01'],['height_cm','Height (cm)','0.01']].map(([field, label, step]) => (
+                  <div key={field} className="form-group" style={{ flex: '1 1 90px', marginBottom: 0 }}>
+                    <label className="form-label">{label}</label>
+                    <input style={dimStyle} type="number" step={step} min="0" placeholder="—"
+                      value={newRow[field]} onChange={e => setNewRow(r => ({...r, [field]: e.target.value}))} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={addSaving || !newRow.uom_id || !newRow.qty_in_base} onClick={handleAdd}>
+                {addSaving ? '...' : 'Add packaging'}
+              </button>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAdd(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* List */}
+        {uomConversions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--text-sub)', fontSize: 13, marginTop: 12 }}>
+            No packaging formats defined. The base UOM is set in Overview.
+          </div>
+        ) : (
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {uomConversions.map(u => {
+              const isEditing = Boolean(edits[u.id]);
+              const d = edits[u.id] || {};
+              return (
+                <div key={u.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  {/* Row header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isEditing ? 'rgba(47,127,232,0.04)' : 'var(--card)' }}>
+                    <span style={{ fontFamily: 'DM Mono', fontWeight: 700, background: 'var(--accent-dim)', color: 'var(--accent)', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{u.uom_code}</span>
+                    <span style={{ fontSize: 12.5, color: 'var(--text-sub)' }}>{u.uom_name}</span>
+                    <span className={`pill ${ROLE_PILLS[u.uom_role] || 'pill-grey'}`} style={{ fontSize: 10 }}>{ROLE_LABELS[u.uom_role] || u.uom_role}</span>
+                    <span style={{ fontFamily: 'DM Mono', fontSize: 12, color: 'var(--text)' }}>× {parseFloat(u.qty_in_base).toLocaleString('en-AU', { maximumFractionDigits: 6 })}</span>
+                    {u.barcode && <span style={{ fontFamily: 'DM Mono', fontSize: 11, color: 'var(--text-sub)', background: 'var(--bg)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 4 }}>{u.barcode}</span>}
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      {!isEditing ? (
+                        <>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => startEdit(u)}>Edit</button>
+                          <button type="button" className="btn btn-danger btn-sm" onClick={() => handleRemove(u.id)}><TrashSmIcon /></button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="btn btn-primary btn-sm" disabled={saving2[u.id]} onClick={() => saveEdit(u.id)}>{saving2[u.id] ? '...' : 'Save'}</button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => cancelEdit(u.id)}>Cancel</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Existing dims (read) or edit form */}
+                  {!isEditing ? (
+                    <div style={{ padding: '8px 14px', background: 'rgba(240,244,249,0.4)', borderTop: '1px solid var(--border)', display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12 }}>
+                      {[['Weight', u.weight_kg, 'kg'], ['Length', u.length_cm, 'cm'], ['Width', u.width_cm, 'cm'], ['Height', u.height_cm, 'cm']].map(([label, val, unit]) => (
+                        <div key={label}>
+                          <span style={{ color: 'var(--text-sub)' }}>{label}: </span>
+                          <span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{val != null ? `${parseFloat(val)} ${unit}` : <span style={{ color: 'var(--text-sub)' }}>—</span>}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'rgba(47,127,232,0.03)' }}>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                        <div className="form-group" style={{ flex: '1 1 110px', marginBottom: 0 }}>
+                          <label className="form-label">Role</label>
+                          <select className="form-input" value={d.uom_role} onChange={e => setField(u.id, 'uom_role', e.target.value)}>
+                            <option value="purchase">Purchase</option>
+                            <option value="sales">Sales</option>
+                            <option value="base">Base</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div className="form-group" style={{ flex: '0 1 100px', marginBottom: 0 }}>
+                          <label className="form-label">Qty in base</label>
+                          <input className="form-input" type="number" step="0.000001" min="0.000001"
+                            value={d.qty_in_base} onChange={e => setField(u.id, 'qty_in_base', e.target.value)}
+                            style={{ fontFamily: 'DM Mono' }} />
+                        </div>
+                        <div className="form-group" style={{ flex: '2 1 140px', marginBottom: 0 }}>
+                          <label className="form-label">Barcode</label>
+                          <input className="form-input" value={d.barcode} onChange={e => setField(u.id, 'barcode', e.target.value)}
+                            style={{ fontFamily: 'DM Mono' }} />
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-sub)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Physical dimensions for this packaging</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {[['weight_kg','Weight (kg)','0.0001'],['length_cm','Length (cm)','0.01'],['width_cm','Width (cm)','0.01'],['height_cm','Height (cm)','0.01']].map(([field, label, step]) => (
+                          <div key={field} className="form-group" style={{ flex: '1 1 90px', marginBottom: 0 }}>
+                            <label className="form-label">{label}</label>
+                            <input style={dimStyle} type="number" step={step} min="0" placeholder="—"
+                              value={d[field]} onChange={e => setField(u.id, field, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UomConversionsCard({ productId, uoms, uomConversions, onReload }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newRow,  setNewRow]  = useState({ uom_id: '', uom_role: 'other', qty_in_base: '', barcode: '' });

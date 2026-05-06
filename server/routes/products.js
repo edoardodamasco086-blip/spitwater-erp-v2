@@ -500,7 +500,81 @@ router.get('/:id', requirePermission('products','read'), asyncHandler(async (req
 }));
 
 // ────────────────────────────────────────────────────────────────
-// POST /api/products  — create product
+// GET /api/products/:id/uom-lock-status
+// Returns whether the base UOM can be changed and the reasons why not.
+// Locked if: stock > 0, open document lines, active stock reservations,
+// any UOM conversions already defined.
+// ────────────────────────────────────────────────────────────────
+router.get('/:id/uom-lock-status', requirePermission('products','read'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const id    = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+
+  // 1. Total on-hand stock across all warehouses
+  const stockRes = await pool.request()
+    .input('product_id', sql.Int, id)
+    .input('org_id',     sql.Int, orgId)
+    .query(`
+      SELECT ISNULL(SUM(qty_on_hand), 0) AS total_stock
+      FROM stock_levels
+      WHERE product_id = @product_id AND org_id = @org_id
+    `);
+  const totalStock = parseFloat(stockRes.recordset[0].total_stock);
+
+  // 2. Open document lines (sales orders, purchase orders, quotes, invoices etc.)
+  // Any document that is not voided/cancelled/closed still creates a commitment.
+  const openDocsRes = await pool.request()
+    .input('product_id', sql.Int, id)
+    .input('org_id',     sql.Int, orgId)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM document_lines dl
+      INNER JOIN documents d ON d.id = dl.document_id
+      WHERE dl.product_id = @product_id
+        AND d.org_id      = @org_id
+        AND d.is_void     = 0
+        AND d.status NOT IN ('cancelled', 'closed', 'voided')
+        AND dl.line_type  = 'product'
+    `);
+  const openDocs = openDocsRes.recordset[0].cnt;
+
+  // 3. Active stock reservations (unfulfilled)
+  const reservationsRes = await pool.request()
+    .input('product_id', sql.Int, id)
+    .input('org_id',     sql.Int, orgId)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM stock_reservations
+      WHERE product_id = @product_id
+        AND org_id     = @org_id
+        AND status     = 'active'
+    `);
+  const activeReservations = reservationsRes.recordset[0].cnt;
+
+  // 4. Any UOM conversions already defined (changing base invalidates the ratios)
+  const uomConvRes = await pool.request()
+    .input('product_id', sql.Int, id)
+    .input('org_id',     sql.Int, orgId)
+    .query(`
+      SELECT COUNT(*) AS cnt
+      FROM product_uom_conversions
+      WHERE product_id = @product_id AND org_id = @org_id
+    `);
+  const uomConversions = uomConvRes.recordset[0].cnt;
+
+  const reasons = [];
+  if (totalStock > 0)        reasons.push(`${totalStock} units in stock across warehouses`);
+  if (openDocs > 0)          reasons.push(`${openDocs} open document line(s) (SO, PO, Quote, Invoice, etc.)`);
+  if (activeReservations > 0) reasons.push(`${activeReservations} active stock reservation(s)`);
+  if (uomConversions > 0)    reasons.push(`${uomConversions} packaging / UOM conversion(s) defined`);
+
+  const locked = reasons.length > 0;
+  return res.json({
+    success: true,
+    data: { locked, reasons, totalStock, openDocs, activeReservations, uomConversions },
+  });
+}));
+
 // ────────────────────────────────────────────────────────────────
 router.post('/', requirePermission('products','write'), asyncHandler(async (req, res) => {
   await poolConnect;
@@ -651,6 +725,40 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     is_active,
   } = req.body;
 
+  // Guard: if base_uom_id is being changed, verify no blockers
+  if (base_uom_id != null) {
+    const currentUomRes = await pool.request()
+      .input('id', sql.Int, id)
+      .query('SELECT base_uom_id FROM products WHERE id=@id');
+    const currentUomId = currentUomRes.recordset[0]?.base_uom_id;
+
+    if (currentUomId && parseInt(base_uom_id) !== currentUomId) {
+      const [stockR, docsR, resR, uomR] = await Promise.all([
+        pool.request().input('p', sql.Int, id).input('o', sql.Int, orgId)
+          .query('SELECT ISNULL(SUM(qty_on_hand),0) AS s FROM stock_levels WHERE product_id=@p AND org_id=@o'),
+        pool.request().input('p', sql.Int, id).input('o', sql.Int, orgId)
+          .query(`SELECT COUNT(*) AS n FROM document_lines dl INNER JOIN documents d ON d.id=dl.document_id WHERE dl.product_id=@p AND d.org_id=@o AND d.is_void=0 AND d.status NOT IN ('cancelled','closed','voided') AND dl.line_type='product'`),
+        pool.request().input('p', sql.Int, id).input('o', sql.Int, orgId)
+          .query(`SELECT COUNT(*) AS n FROM stock_reservations WHERE product_id=@p AND org_id=@o AND status='active'`),
+        pool.request().input('p', sql.Int, id).input('o', sql.Int, orgId)
+          .query('SELECT COUNT(*) AS n FROM product_uom_conversions WHERE product_id=@p AND org_id=@o'),
+      ]);
+      const blockers = [];
+      if (parseFloat(stockR.recordset[0].s) > 0) blockers.push('product has stock on hand');
+      if (docsR.recordset[0].n > 0)  blockers.push('product has open document lines (SO / PO / Quote / Invoice)');
+      if (resR.recordset[0].n > 0)   blockers.push('product has active stock reservations');
+      if (uomR.recordset[0].n > 0)   blockers.push('product has packaging / UOM conversions defined');
+
+      if (blockers.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: `Base UOM cannot be changed: ${blockers.join('; ')}.`,
+          blockers,
+        });
+      }
+    }
+  }
+
   await pool.request()
     .input('id',                        sql.Int,              id)
     .input('barcode',                   sql.NVarChar(100),    barcode                   || null)
@@ -745,6 +853,9 @@ router.patch('/:id/void', requirePermission('products','delete'), asyncHandler(a
 // ────────────────────────────────────────────────────────────────
 // POST /api/products/:id/images  — upload image
 // ────────────────────────────────────────────────────────────────
+const sharp = require('sharp');
+
+// POST /api/products/:id/images
 router.post('/:id/images', requirePermission('products','update'), uploadProductImage, asyncHandler(async (req, res) => {
   await poolConnect;
   const productId = parseInt(req.params.id);
@@ -767,6 +878,20 @@ router.post('/:id/images', requirePermission('products','update'), uploadProduct
   // Build relative URL path
   const relativePath = `products/images/${productId}/${req.file.filename}`;
   const imageUrl     = `/uploads/${relativePath}`;
+
+  // Generate thumbnails
+  try {
+    const parsedPath = path.parse(req.file.path);
+    const smPath = path.join(parsedPath.dir, `${parsedPath.name}_sm${parsedPath.ext}`);
+    const mdPath = path.join(parsedPath.dir, `${parsedPath.name}_md${parsedPath.ext}`);
+    const lgPath = path.join(parsedPath.dir, `${parsedPath.name}_lg${parsedPath.ext}`);
+
+    await sharp(req.file.path).resize({ width: 150, withoutEnlargement: true }).toFile(smPath);
+    await sharp(req.file.path).resize({ width: 500, withoutEnlargement: true }).toFile(mdPath);
+    await sharp(req.file.path).resize({ width: 1024, withoutEnlargement: true }).toFile(lgPath);
+  } catch (err) {
+    console.error('Thumbnail generation failed:', err);
+  }
 
   const result = await pool.request()
     .input('product_id',   sql.Int,          productId)
@@ -850,6 +975,14 @@ router.delete('/:id/images/:imgId', requirePermission('products','update'), asyn
   // Delete file from disk
   const storagePath = img.recordset[0].image_url.replace('/uploads/', '');
   deleteFile(storagePath);
+  
+  // Try to delete thumbnails as well
+  const parts = storagePath.split('.');
+  const ext = parts.pop();
+  const base = parts.join('.');
+  deleteFile(`${base}_sm.${ext}`);
+  deleteFile(`${base}_md.${ext}`);
+  deleteFile(`${base}_lg.${ext}`);
 
   // If was primary, assign new primary
   if (img.recordset[0].is_primary) {
