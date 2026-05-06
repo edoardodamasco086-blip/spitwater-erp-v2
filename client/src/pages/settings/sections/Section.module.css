@@ -1,0 +1,66 @@
+.loading { display: flex; align-items: center; gap: 10px; color: var(--text-sub); font-size: 14px; padding: 20px 0; }
+
+.section { margin-bottom: 32px; padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+.section:last-of-type { border-bottom: none; }
+.sectionTitle { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+.sectionNote  { font-size: 13px; color: var(--text-sub); margin-bottom: 14px; margin-top: -8px; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.span2 { grid-column: 1 / -1; }
+
+.saveRow { display: flex; justify-content: flex-end; padding-top: 8px; }
+
+.errorBox   { background: var(--red-dim); border: 1px solid rgba(224,82,82,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13.5px; color: var(--red); margin-bottom: 20px; }
+.successBox { background: var(--green-dim); border: 1px solid rgba(46,204,138,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13.5px; color: #1EA870; margin-bottom: 20px; }
+.infoBox    { background: var(--accent-dim); border: 1px solid rgba(47,127,232,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--text-sub); margin-bottom: 16px; }
+
+/* Cards used in SMTP / Numbering / Warehouse lists */
+.itemCard {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; transition: border-color 0.15s;
+}
+.itemCard:hover { border-color: var(--border-dark); }
+.itemCard.defaultCard { border-color: rgba(47,127,232,0.3); background: rgba(47,127,232,0.03); }
+
+.itemLeft  { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.itemTitle { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.itemMeta  { font-size: 12.5px; color: var(--text-sub); font-family: 'DM Mono'; }
+.itemDesc  { font-size: 12.5px; color: var(--text-sub); }
+.itemActions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.addBtn {
+  width: 100%; padding: 12px; border: 2px dashed var(--border-dark);
+  border-radius: var(--radius); background: none;
+  font-size: 13.5px; color: var(--text-sub); cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.addBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+.statusDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dotGreen  { background: var(--green); }
+.dotGrey   { background: var(--text-sub); }
+.dotRed    { background: var(--red); }
+
+/* Inline edit form */
+.editForm { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 12px; display: flex; flex-direction: column; gap: 14px; }
+.editFormRow { display: flex; gap: 12px; }
+.editFormActions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Empty state */
+.empty { padding: 40px; text-align: center; color: var(--text-sub); font-size: 14px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+/* Table styles for audit log */
+.auditTable { font-size: 13px; }
+.auditTable td { padding: 10px 16px; vertical-align: top; }
+.actionType { font-family: 'DM Mono'; font-size: 11.5px; color: var(--accent); background: var(--accent-dim); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.auditDesc  { color: var(--text); max-width: 320px; }
+.auditMeta  { color: var(--text-sub); font-size: 12px; }
+.auditTime  { color: var(--text-sub); white-space: nowrap; font-family: 'DM Mono'; font-size: 11.5px; }
+
+/* Preview badge */
+.previewBadge { font-family: 'DM Mono'; font-size: 22px; font-weight: 600; color: var(--accent); letter-spacing: -0.5px; }
+.previewSub   { font-size: 11px; color: var(--text-sub); margin-top: 2px; }

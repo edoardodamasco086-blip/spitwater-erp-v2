@@ -1,0 +1,244 @@
+/* ── Shell grid ─────────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--nav-width) 1fr;
+  grid-template-rows: var(--topbar-h) 1fr;
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns 0.22s ease;
+}
+.collapsed { grid-template-columns: var(--nav-collapsed) 1fr; }
+
+/* ── Topbar ──────────────────────────────────────────────────── */
+.topbar {
+  grid-column: 1 / -1;
+  background: var(--nav-bg);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center;
+  position: relative; z-index: 200;
+}
+
+.brand {
+  width: var(--nav-width); min-width: var(--nav-width);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px 0 18px;
+  transition: width 0.22s, min-width 0.22s;
+  overflow: hidden; flex-shrink: 0;
+}
+.collapsed .brand { width: var(--nav-collapsed); min-width: var(--nav-collapsed); }
+
+.logoMark {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--accent);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.brandName {
+  font-size: 14.5px; font-weight: 600; color: white;
+  white-space: nowrap; opacity: 1; transition: opacity 0.15s;
+}
+.collapsed .brandName { opacity: 0; }
+
+.topLeft {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; flex: 1;
+}
+.collapseBtn {
+  background: none; border: none;
+  color: var(--steel); cursor: pointer;
+  padding: 7px; border-radius: 7px;
+  display: flex; align-items: center;
+  transition: color 0.15s, background 0.15s;
+}
+.collapseBtn:hover { color: white; background: rgba(255,255,255,0.07); }
+
+.searchWrap {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 7px 14px;
+  color: var(--steel); flex: 0 0 300px;
+  transition: background 0.15s;
+}
+.searchWrap:hover { background: rgba(255,255,255,0.07); }
+.searchWrap input {
+  background: none; border: none; outline: none;
+  color: white; font-size: 13px; width: 100%;
+}
+.searchWrap input::placeholder { color: var(--steel); }
+
+.topRight {
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 18px;
+}
+.topBtn {
+  background: none; border: none;
+  color: var(--steel); cursor: pointer;
+  padding: 8px; border-radius: 7px;
+  display: flex; align-items: center; position: relative;
+  transition: color 0.15s, background 0.15s;
+}
+.topBtn:hover { color: var(--mist); background: rgba(255,255,255,0.07); }
+
+.notifDot {
+  position: absolute; top: 6px; right: 6px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--red); border: 2px solid var(--nav-bg);
+}
+.dividerV { width: 1px; height: 22px; background: rgba(255,255,255,0.08); margin: 0 8px; }
+
+/* User chip */
+.userChip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px 5px 5px; border-radius: 20px;
+  cursor: pointer; position: relative;
+  transition: background 0.15s; user-select: none;
+}
+.userChip:hover { background: rgba(255,255,255,0.06); }
+
+.avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent);
+  display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 600; color: white; flex-shrink: 0;
+}
+.userInfo { display: flex; align-items: center; gap: 8px; }
+.userName { font-size: 13px; color: var(--mist); white-space: nowrap; }
+
+.roleBadge {
+  font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  font-weight: 500; white-space: nowrap;
+}
+.roleSuper  { background: rgba(47,127,232,0.22);  color: #7BB8F5; }
+.roleAdmin  { background: rgba(46,204,138,0.15);  color: #3DB87B; }
+.roleEditor { background: rgba(183,193,204,0.12); color: #8FA4BC; }
+.roleViewer { background: rgba(183,193,204,0.08); color: #6A8299; }
+
+/* User dropdown */
+.userDropdown {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  background: var(--navy-mid);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px; padding: 6px;
+  min-width: 210px;
+  box-shadow: 0 16px 40px rgba(5,10,20,0.55);
+  z-index: 300;
+  opacity: 0; pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.userDropdown.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+
+.ddHeader {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px 10px;
+}
+.ddAvatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 600; color: white; flex-shrink: 0;
+}
+.ddName  { font-size: 13px; font-weight: 500; color: white; }
+.ddEmail { font-size: 11px; color: var(--steel); margin-top: 1px; }
+
+.ddSep { height: 1px; background: rgba(255,255,255,0.07); margin: 4px 0; }
+
+.ddItem {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 11px; border-radius: 7px;
+  background: none; border: none;
+  font-size: 13px; color: var(--mist);
+  cursor: pointer; transition: background 0.12s, color 0.12s;
+  text-align: left;
+}
+.ddItem:hover { background: rgba(255,255,255,0.07); color: white; }
+.ddDanger:hover { background: rgba(224,82,82,0.12); color: #F07878; }
+
+/* ── Sidenav ─────────────────────────────────────────────────── */
+.sidenav {
+  grid-row: 2;
+  background: var(--nav-bg);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.navScroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 0; }
+.navScroll::-webkit-scrollbar { width: 3px; }
+.navScroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.navSection  { padding: 2px 8px; }
+.navSectionLabel {
+  font-size: 10px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--steel); padding: 10px 8px 4px;
+  font-weight: 600; white-space: nowrap;
+}
+.navDivider { height: 1px; background: rgba(255,255,255,0.05); margin: 5px 8px; }
+
+.navItem {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: var(--steel);
+  cursor: pointer; transition: all 0.14s;
+  white-space: nowrap; position: relative;
+  text-decoration: none; width: 100%;
+  background: none; border: none; text-align: left;
+}
+.navItem:hover  { background: rgba(47,127,232,0.10); color: var(--mist); }
+.navActive      { background: rgba(47,127,232,0.16) !important; color: white !important; }
+.navActive .navIcon { color: var(--accent-lt) !important; }
+
+.navIcon  { width: 18px; height: 18px; flex-shrink: 0; color: var(--steel); transition: color 0.14s; display: flex; align-items: center; }
+.navItem:hover .navIcon { color: var(--mist); }
+
+.navLabel { flex: 1; }
+.navBadge {
+  background: var(--red); color: white;
+  font-size: 10px; font-weight: 600;
+  min-width: 18px; height: 18px;
+  border-radius: 9px; display: grid; place-items: center;
+  padding: 0 4px;
+}
+.navArrow { color: var(--steel); display: flex; align-items: center; transition: transform 0.2s; }
+.arrowOpen { transform: rotate(90deg); }
+.navGroupOpen { background: rgba(47,127,232,0.07); }
+
+/* Subnav */
+.subnav { padding: 2px 0 2px 28px; }
+.subnavItem {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 6px;
+  font-size: 12.5px; color: var(--steel);
+  cursor: pointer; transition: all 0.12s;
+  white-space: nowrap; width: 100%;
+  background: none; border: none; text-align: left;
+}
+.subnavItem:hover { background: rgba(255,255,255,0.05); color: var(--mist); }
+.subDot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); flex-shrink: 0;
+  transition: background 0.12s;
+}
+.subnavItem:hover .subDot { background: var(--accent); }
+
+/* Tooltip when collapsed */
+.collapsed .navItem { justify-content: center; padding: 10px; }
+.collapsed .navItem:hover::after {
+  content: attr(data-label);
+  position: absolute; left: 54px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--navy-mid);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: white; font-size: 12px; white-space: nowrap;
+  padding: 5px 10px; border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 400; pointer-events: none;
+}
+
+/* Nav bottom */
+.navBottom {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 8px;
+}
+
+/* ── Main ────────────────────────────────────────────────────── */
+.main { grid-row: 2; overflow-y: auto; background: var(--bg); }

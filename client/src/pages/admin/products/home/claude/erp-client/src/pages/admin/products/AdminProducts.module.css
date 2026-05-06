@@ -1,0 +1,74 @@
+.page    { padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; max-width: 1100px; }
+.header  { display: flex; align-items: flex-start; justify-content: space-between; }
+.title   { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; }
+.sub     { font-size: 13.5px; color: var(--text-sub); margin-top: 4px; max-width: 560px; }
+
+.successBox { background: var(--green-dim); border: 1px solid rgba(46,204,138,0.2); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #1EA870; }
+.errorBox   { background: var(--red-dim); border: 1px solid rgba(224,82,82,0.2); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--red); }
+
+/* Tree card */
+.treeCard { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.catTree  { display: flex; flex-direction: column; }
+
+.catRow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.catRow:last-child { border-bottom: none; }
+.catRow:hover { background: rgba(47,127,232,0.025); }
+
+.catIcon { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; flex-shrink: 0; }
+.catInfo { flex: 1; }
+.catName { font-size: 13.5px; font-weight: 500; }
+.catDesc { font-size: 12px; color: var(--text-sub); margin-top: 1px; }
+.catMeta { display: flex; gap: 6px; align-items: center; }
+.catActions { display: flex; gap: 6px; }
+
+/* Inline form */
+.inlineForm {
+  background: rgba(240,244,249,0.5); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px;
+  margin: 0 16px 12px; display: flex; flex-direction: column; gap: 12px;
+}
+
+/* Form card */
+.formCard {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 24px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.formCardTitle { font-size: 15px; font-weight: 600; }
+
+.formSection { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border); }
+.formSectionTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; color: var(--text-sub); }
+.formRow { display: flex; gap: 12px; align-items: flex-start; }
+.formActions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 8px; }
+
+/* Options */
+.optionList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.optionRow  { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.optionColor { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.1); }
+.optionLabel { flex: 1; font-size: 13.5px; font-weight: 500; }
+.optionKey   { font-family: 'DM Mono'; font-size: 11.5px; color: var(--text-sub); }
+
+.addOptionRow { display: flex; gap: 8px; align-items: center; }
+.colorInput   { width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--border); padding: 2px; cursor: pointer; background: var(--bg); }
+
+/* Checkboxes */
+.checkboxRow { display: flex; gap: 24px; flex-wrap: wrap; }
+.checkLabel  { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--text-sub); cursor: pointer; }
+
+/* Field table */
+.fieldTable { width: 100%; border-collapse: collapse; }
+.fieldTable thead th { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-sub); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); background: rgba(240,244,249,0.5); }
+.fieldTable tbody td { padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.fieldTable tbody tr:last-child td { border-bottom: none; }
+.fieldTable tbody tr:hover { background: rgba(47,127,232,0.025); }
+.fieldName  { font-weight: 500; }
+.fieldHelp  { font-size: 11.5px; color: var(--text-sub); margin-top: 2px; }
+.fieldKey   { font-family: 'DM Mono'; font-size: 12px; color: var(--accent); background: var(--accent-dim); padding: 2px 8px; border-radius: 4px; }
+.centerCell { text-align: center; color: var(--green); }
+
+/* States */
+.stateBlock { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; color: var(--text-sub); font-size: 14px; text-align: center; min-height: 200px; justify-content: center; }

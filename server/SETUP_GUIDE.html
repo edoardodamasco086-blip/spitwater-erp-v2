@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spitwater ERP — Developer Setup Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0D0D14;--surface:#15151F;--surface2:#1C1C2A;--border:#252535;--border2:#303045;
+  --accent:#5B8DEF;--accent2:#7AAAF5;--green:#3DD68C;--orange:#F5A94A;--red:#FF5F57;--yellow:#FFD60A;--purple:#BF5AF2;
+  --text:#EAEAF5;--muted:#7878A0;--code-bg:#09090F;
+  --mono:'JetBrains Mono',monospace;--sans:'Sora',sans-serif;
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);line-height:1.7;font-size:15px}
+
+.progress-bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--purple));z-index:1000;transition:width 0.15s}
+
+.layout{display:grid;grid-template-columns:260px 1fr;min-height:100vh;max-width:1240px;margin:0 auto}
+
+/* sidebar */
+.sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 0;border-right:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.sb-logo{padding:0 22px 22px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.sb-mark{width:34px;height:34px;border-radius:9px;background:var(--accent);display:grid;place-items:center;margin-bottom:10px}
+.sb-mark svg{width:17px;height:17px}
+.sb-title{font-size:13.5px;font-weight:600}
+.sb-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.sb-group{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:14px 22px 4px;font-weight:600}
+.sb-link{display:flex;align-items:center;gap:9px;padding:8px 22px;font-size:12.5px;color:var(--muted);text-decoration:none;cursor:pointer;border-left:2px solid transparent;transition:all .15s}
+.sb-link:hover{color:var(--text);background:rgba(91,141,239,.05)}
+.sb-link.active{color:var(--accent2);border-left-color:var(--accent);background:rgba(91,141,239,.08)}
+.sb-num{width:18px;height:18px;border-radius:50%;background:var(--border2);color:var(--muted);font-size:10px;font-weight:600;font-family:var(--mono);display:grid;place-items:center;flex-shrink:0;transition:all .15s}
+.sb-link.active .sb-num{background:var(--accent);color:#fff}
+.sb-dot{width:5px;height:5px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:background .15s}
+.sb-link:hover .sb-dot,.sb-link.active .sb-dot{background:var(--accent)}
+
+/* content */
+.content{padding:56px 64px;max-width:820px}
+
+/* hero */
+.hero{margin-bottom:60px;padding-bottom:48px;border-bottom:1px solid var(--border)}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(91,141,239,.1);border:1px solid rgba(91,141,239,.2);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--accent2);font-weight:500;letter-spacing:.04em;margin-bottom:18px}
+.hero h1{font-size:36px;font-weight:700;line-height:1.15;letter-spacing:-.7px;margin-bottom:14px}
+.hero h1 span{color:var(--accent)}
+.hero p{font-size:15.5px;color:var(--muted);max-width:580px}
+
+/* arch diagram */
+.arch{background:var(--code-bg);border:1px solid var(--border);border-radius:10px;padding:24px;font-family:var(--mono);font-size:12.5px;line-height:2;color:var(--muted);margin:24px 0}
+.arch .box{color:var(--accent2)}
+.arch .arr{color:var(--border2)}
+.arch .lbl{color:var(--green)}
+.arch .note{color:#333355;font-size:11px}
+
+/* sections */
+.section{margin-bottom:68px}
+.sec-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:28px}
+.step-num{width:40px;height:40px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,var(--accent),#3D60C0);display:grid;place-items:center;font-size:16px;font-weight:700;color:#fff;font-family:var(--mono);box-shadow:0 4px 16px rgba(91,141,239,.3);margin-top:2px}
+.sec-header h2{font-size:21px;font-weight:600;letter-spacing:-.3px;margin-bottom:4px}
+.sec-header p{font-size:13.5px;color:var(--muted)}
+
+/* step cards */
+.steps{display:flex;flex-direction:column;gap:18px}
+.step{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.step-head{display:flex;align-items:flex-start;gap:11px;padding:15px 18px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015)}
+.step-badge{width:22px;height:22px;border-radius:50%;background:var(--border2);color:var(--muted);font-size:11px;font-weight:600;font-family:var(--mono);display:grid;place-items:center;flex-shrink:0;margin-top:2px}
+.step-title{font-size:14px;font-weight:600}
+.step-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.step-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+
+/* code */
+.code-block{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-family:var(--mono)}
+.code-top{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:rgba(255,255,255,.025);border-bottom:1px solid var(--border)}
+.code-dots{display:flex;gap:5px}
+.d-r{width:10px;height:10px;border-radius:50%;background:var(--red)}
+.d-y{width:10px;height:10px;border-radius:50%;background:var(--yellow)}
+.d-g{width:10px;height:10px;border-radius:50%;background:var(--green)}
+.code-lang{font-size:10.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.copy-btn{background:rgba(91,141,239,.12);border:1px solid rgba(91,141,239,.2);color:var(--accent2);border-radius:5px;padding:3px 9px;font-size:10px;font-family:var(--mono);cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:rgba(91,141,239,.22)}
+.copy-btn.ok{background:rgba(61,214,140,.12);border-color:rgba(61,214,140,.2);color:var(--green)}
+pre{padding:16px 18px;font-size:12.5px;line-height:1.75;overflow-x:auto;white-space:pre}
+code{font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--accent2)}
+
+/* syntax */
+.cm{color:#33334A;font-style:italic}  /* comment */
+.kw{color:var(--purple)}              /* keyword */
+.st{color:var(--green)}               /* string */
+.vl{color:var(--orange)}              /* value */
+.ky{color:var(--accent2)}             /* key */
+.pm{color:var(--muted)}               /* prompt */
+.hl{background:rgba(91,141,239,.08);display:block;margin:0 -18px;padding:0 18px} /* highlight */
+
+/* info boxes */
+.box{border-radius:8px;padding:13px 16px;display:flex;gap:11px;font-size:13px;line-height:1.65}
+.box.tip  {background:rgba(61,214,140,.06);border:1px solid rgba(61,214,140,.18)}
+.box.warn {background:rgba(245,169,74,.06);border:1px solid rgba(245,169,74,.2)}
+.box.info {background:rgba(91,141,239,.06);border:1px solid rgba(91,141,239,.18)}
+.box.danger{background:rgba(255,95,87,.06);border:1px solid rgba(255,95,87,.18)}
+.box-icon{font-size:15px;flex-shrink:0;margin-top:1px}
+.box-text{color:var(--muted)}
+.box-text strong{color:var(--text);font-weight:600}
+.box-text code{font-size:11.5px}
+
+/* file tree */
+.tree{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:18px 20px;font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--muted)}
+.tree .dir{color:var(--accent2);font-weight:500}
+.tree .file{color:var(--text)}
+.tree .cmt{color:#28283A}
+.tree .new{color:var(--green)}
+
+/* postman / test table */
+.test-table{width:100%;border-collapse:collapse;font-size:13px}
+.test-table th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;padding:9px 14px;text-align:left;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+.test-table td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+.test-table tr:last-child td{border-bottom:none}
+.method{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px}
+.m-post{background:rgba(61,214,140,.12);color:var(--green)}
+.m-get {background:rgba(91,141,239,.12);color:var(--accent2)}
+.m-patch{background:rgba(245,169,74,.12);color:var(--orange)}
+.m-del {background:rgba(255,95,87,.12);color:var(--red)}
+.endpoint{font-family:var(--mono);font-size:12px;color:var(--accent2)}
+.td-desc{color:var(--muted);font-size:12.5px}
+.td-auth{font-size:11px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;padding:2px 7px;border-radius:10px}
+.p-lock{background:rgba(245,169,74,.12);color:var(--orange)}
+.p-open{background:rgba(123,123,160,.12);color:var(--muted)}
+
+/* checklist */
+.checklist{display:flex;flex-direction:column;gap:10px}
+.chk{display:flex;align-items:flex-start;gap:11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 15px;cursor:pointer;transition:all .15s}
+.chk:hover{border-color:var(--border2)}
+.chk.done{border-color:rgba(61,214,140,.3);background:rgba(61,214,140,.04)}
+.chk-box{width:20px;height:20px;border-radius:5px;flex-shrink:0;margin-top:1px;border:2px solid var(--border2);display:grid;place-items:center;transition:all .2s}
+.chk.done .chk-box{background:var(--green);border-color:var(--green)}
+.chk-tick{opacity:0;transition:opacity .15s}
+.chk.done .chk-tick{opacity:1}
+.chk-title{font-weight:500;font-size:13.5px}
+.chk-desc{font-size:12px;color:var(--muted);margin-top:3px}
+.chk-url{font-size:11px;font-family:var(--mono);color:var(--accent2);margin-top:5px}
+
+footer{border-top:1px solid var(--border);padding:40px 64px;color:var(--muted);font-size:12.5px;text-align:center}
+</style>
+</head>
+<body>
+<div class="progress-bar" id="pb"></div>
+
+<div class="layout">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-mark"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="3" width="9" height="9" rx="2"/><rect x="13" y="3" width="9" height="9" rx="2"/><rect x="2" y="14" width="9" height="9" rx="2"/><rect x="13" y="14" width="9" height="9" rx="2"/></svg></div>
+    <div class="sb-title">Spitwater ERP</div>
+    <div class="sb-sub">Dev Setup Guide · Windows 11</div>
+  </div>
+
+  <div class="sb-group">Overview</div>
+  <div class="sb-link active" onclick="go('overview',this)"><span class="sb-dot"></span>How it all fits together</div>
+  <div class="sb-link" onclick="go('structure',this)"><span class="sb-dot"></span>Project folder structure</div>
+
+  <div class="sb-group">Step-by-step</div>
+  <div class="sb-link" onclick="go('s1',this)"><span class="sb-num">1</span>Install Node.js</div>
+  <div class="sb-link" onclick="go('s2',this)"><span class="sb-num">2</span>Get the project files</div>
+  <div class="sb-link" onclick="go('s3',this)"><span class="sb-num">3</span>Install packages</div>
+  <div class="sb-link" onclick="go('s4',this)"><span class="sb-num">4</span>Configure .env (DB + JWT)</div>
+  <div class="sb-link" onclick="go('s5',this)"><span class="sb-num">5</span>Enable SQL Server TCP</div>
+  <div class="sb-link" onclick="go('s6',this)"><span class="sb-num">6</span>Test DB connection</div>
+  <div class="sb-link" onclick="go('s7',this)"><span class="sb-num">7</span>Create first admin user</div>
+  <div class="sb-link" onclick="go('s8',this)"><span class="sb-num">8</span>Start the server</div>
+  <div class="sb-link" onclick="go('s9',this)"><span class="sb-num">9</span>Test the API</div>
+
+  <div class="sb-group">Reference</div>
+  <div class="sb-link" onclick="go('endpoints',this)"><span class="sb-dot"></span>All API endpoints</div>
+  <div class="sb-link" onclick="go('config',this)"><span class="sb-dot"></span>All .env settings explained</div>
+  <div class="sb-link" onclick="go('errors',this)"><span class="sb-dot"></span>Common errors &amp; fixes</div>
+</aside>
+
+<!-- CONTENT -->
+<div class="content">
+
+<!-- HERO -->
+<div class="hero" id="overview">
+  <div class="hero-badge">📖 Developer Guide · Phase 1 &amp; 2</div>
+  <h1>Setting up the<br><span>ERP backend</span> on Windows 11</h1>
+  <p>This guide takes you from a blank Windows 11 machine to a fully running Express API connected to your SQL Server — step by step, no experience assumed.</p>
+
+  <div class="arch" style="margin-top:28px">
+<span class="box">[ Your Browser / Postman ]</span>
+        |
+        |  HTTP  requests  to  /api/*
+        v
+<span class="box">[ Node.js  +  Express  ]</span>   <span class="lbl">← server.js  (port 3000)</span>
+        |
+        |  SQL queries via mssql driver
+        v
+<span class="box">[ SQL Server 2014 — SERVER006 ]</span>
+        |
+        |  tables, triggers, stored procs
+        v
+<span class="box">[ Development_04052026 database ]</span>  <span class="lbl">← your schema</span>
+  </div>
+
+  <div class="box info">
+    <div class="box-icon">💡</div>
+    <div class="box-text"><strong>React comes later.</strong> In Phase 1 &amp; 2 we only build the backend. The React frontend (Vite) will be added in Phase 3 and will connect to this same API. For now you test with Postman or a browser.</div>
+  </div>
+</div>
+
+<!-- STRUCTURE -->
+<div class="section" id="structure">
+  <div class="sec-header">
+    <div>
+      <h2>Project folder structure</h2>
+      <p>Where every file lives and why</p>
+    </div>
+  </div>
+
+  <div class="tree">
+<span class="dir">C:\Projects\spitwater-erp\</span>
+│
+<span class="dir">├── server\</span>                         <span class="cmt">← Express backend (what we're building now)</span>
+│   ├── <span class="file">server.js</span>                   <span class="cmt">← app entry point — runs this to start</span>
+│   ├── <span class="file">package.json</span>                <span class="cmt">← lists all npm packages</span>
+│   ├── <span class="new">.env</span>                        <span class="cmt">← YOUR secrets (DB password, JWT key) — NEVER commit</span>
+│   ├── <span class="file">.env.example</span>               <span class="cmt">← safe template — commit this</span>
+│   ├── <span class="file">.gitignore</span>                  <span class="cmt">← tells git to ignore .env and node_modules</span>
+│   │
+│   ├── <span class="dir">config\</span>
+│   │   ├── <span class="file">db.js</span>               <span class="cmt">← SQL Server connection pool (reads .env)</span>
+│   │   └── <span class="file">logger.js</span>           <span class="cmt">← Winston logger (writes to /logs)</span>
+│   │
+│   ├── <span class="dir">middleware\</span>
+│   │   ├── <span class="file">auth.js</span>             <span class="cmt">← verifies JWT on protected routes</span>
+│   │   └── <span class="file">errorHandler.js</span>     <span class="cmt">← catches all errors, formats response</span>
+│   │
+│   ├── <span class="dir">routes\</span>
+│   │   ├── <span class="file">auth.js</span>             <span class="cmt">← /api/auth/* — login, logout, refresh</span>
+│   │   └── <span class="file">users.js</span>            <span class="cmt">← /api/users/* — user management</span>
+│   │
+│   ├── <span class="dir">utils\</span>
+│   │   ├── <span class="file">jwt.js</span>              <span class="cmt">← sign &amp; verify JWT tokens</span>
+│   │   └── <span class="file">password.js</span>         <span class="cmt">← bcrypt hash &amp; verify</span>
+│   │
+│   ├── <span class="dir">scripts\</span>
+│   │   ├── <span class="file">test-db.js</span>          <span class="cmt">← run to check DB connection</span>
+│   │   └── <span class="file">seed-admin.js</span>       <span class="cmt">← creates first org + super admin</span>
+│   │
+│   ├── <span class="dir">logs\</span>                       <span class="cmt">← auto-created, app.log + error.log</span>
+│   └── <span class="dir">node_modules\</span>               <span class="cmt">← auto-created by npm install, never touch</span>
+│
+├── <span class="dir">client\</span>                         <span class="cmt">← React app (Phase 3 — not built yet)</span>
+│
+└── <span class="file">ERP_SCHEMA_COMPLETE.sql</span>         <span class="cmt">← already deployed to SERVER006</span>
+  </div>
+
+  <div class="box tip" style="margin-top:16px">
+    <div class="box-icon">✅</div>
+    <div class="box-text"><strong>The schema is already done.</strong> You already ran <code>ERP_SCHEMA_COMPLETE.sql</code> in SSMS — the 148 tables are live. This guide connects Node.js to those tables.</div>
+  </div>
+</div>
+
+<!-- STEP 1 -->
+<div class="section" id="s1">
+  <div class="sec-header">
+    <div class="step-num">1</div>
+    <div>
+      <h2>Install Node.js on Windows 11</h2>
+      <p>Node.js is the runtime that executes the JavaScript server code.</p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Download Node.js LTS</div><div class="step-sub">Get the Long Term Support version — stable and recommended</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Go to <code>nodejs.org</code> → click the big green <strong>"LTS"</strong> button → download the <code>.msi</code> installer.</p>
+        <div class="box info"><div class="box-icon">📌</div><div class="box-text"><strong>Get version 20 or 22 LTS.</strong> Avoid odd-numbered versions (those are development/unstable). Our <code>package.json</code> requires ≥ 18.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">b</div><div><div class="step-title">Run the installer</div><div class="step-sub">Accept all defaults — including the "Tools for Native Modules" checkbox</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Double-click the downloaded <code>.msi</code> file. Click Next through everything. When you see the checkbox for <strong>"Automatically install the necessary tools"</strong> — tick it. This installs Python and Build Tools which some npm packages need.</p>
+        <div class="box warn"><div class="box-icon">⚠️</div><div class="box-text"><strong>This opens a black PowerShell window at the end</strong> that installs extra tools. Let it finish — it can take 5–10 minutes. Don't close it.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">c</div><div><div class="step-title">Verify the install</div><div class="step-sub">Open a new terminal and check the versions</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Press <kbd>Win + R</kbd> → type <code>cmd</code> → Enter. Then run:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Command Prompt</span><button class="copy-btn" onclick="cp(this,'node --version\nnpm --version')">Copy</button></div>
+          <pre><span class="pm">C:\></span> node --version
+<span class="st">v22.x.x</span>   <span class="cm">← should show v18 or higher</span>
+
+<span class="pm">C:\></span> npm --version
+<span class="st">10.x.x</span>    <span class="cm">← should show 9 or higher</span></pre>
+        </div>
+        <div class="box tip"><div class="box-icon">✅</div><div class="box-text">If you see version numbers you're good. If you get <strong>"not recognized"</strong> — close the terminal completely and open a new one, then try again.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 2 -->
+<div class="section" id="s2">
+  <div class="sec-header">
+    <div class="step-num">2</div>
+    <div>
+      <h2>Get the project files onto your machine</h2>
+      <p>Copy the server folder to a sensible location</p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Create your project folder</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Open File Explorer and create this folder structure:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">File Explorer</span></div>
+          <pre><span class="st">C:\Projects\spitwater-erp\server\</span></pre>
+        </div>
+        <div class="box info"><div class="box-icon">💡</div><div class="box-text">Avoid paths with spaces like <code>My Documents</code>. Keep it simple: <code>C:\Projects\</code> is clean and easy to navigate in the terminal.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">b</div><div><div class="step-title">Copy the server files</div><div class="step-sub">All files delivered here go into that folder</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Copy all the files from this delivery into <code>C:\Projects\spitwater-erp\server\</code>. You should end up with:</p>
+        <div class="tree" style="font-size:11.5px">
+server\
+├── server.js
+├── package.json
+├── .env.example
+├── .gitignore
+├── config\db.js
+├── config\logger.js
+├── middleware\auth.js
+├── middleware\errorHandler.js
+├── routes\auth.js
+├── routes\users.js
+├── utils\jwt.js
+├── utils\password.js
+├── scripts\test-db.js
+└── scripts\seed-admin.js</div>
+        <div class="box warn"><div class="box-icon">⚠️</div><div class="box-text"><strong>Windows hides file extensions by default.</strong> In File Explorer → View → tick "File name extensions" so you can see <code>.js</code>, <code>.env</code> etc.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 3 -->
+<div class="section" id="s3">
+  <div class="sec-header">
+    <div class="step-num">3</div>
+    <div>
+      <h2>Install npm packages</h2>
+      <p>npm reads <code>package.json</code> and downloads all dependencies into <code>node_modules\</code></p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Open terminal in the server folder</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">In File Explorer, navigate to <code>C:\Projects\spitwater-erp\server\</code> then click the address bar at the top, type <code>cmd</code> and press Enter. This opens a terminal <strong>already in that folder</strong>.</p>
+        <div class="box tip"><div class="box-icon">💡</div><div class="box-text"><strong>Alternative:</strong> Right-click on the server folder → "Open in Terminal" (Windows 11 has this built in).</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">b</div><div><div class="step-title">Run npm install</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd — inside server\</span><button class="copy-btn" onclick="cp(this,'npm install')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> npm install</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted)">This downloads ~10 packages. Takes 30–60 seconds. You'll see a lot of text scrolling. When done you should see something like <code>added 237 packages</code>.</p>
+        <div class="box warn"><div class="box-icon">⚠️</div><div class="box-text"><strong>If you see red errors</strong> about node-gyp or missing Python — run <code>npm install --ignore-scripts</code> instead. The mssql driver doesn't require native compilation so this is safe.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">c</div><div><div class="step-title">Install nodemon globally (for auto-restart)</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd</span><button class="copy-btn" onclick="cp(this,'npm install -g nodemon')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> npm install -g nodemon</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted)">Nodemon watches your files and restarts the server automatically every time you save a <code>.js</code> file. Used with <code>npm run dev</code>.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 4 -->
+<div class="section" id="s4">
+  <div class="sec-header">
+    <div class="step-num">4</div>
+    <div>
+      <h2>Create your <code>.env</code> config file</h2>
+      <p>This is where all your database credentials and secrets live</p>
+    </div>
+  </div>
+
+  <div class="box danger" style="margin-bottom:20px"><div class="box-icon">🔐</div><div class="box-text"><strong>The .env file is secret.</strong> It contains your database password and JWT signing key. It is listed in <code>.gitignore</code> so git will never commit it. Never paste its contents into Slack, email, or chat.</div></div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Copy the template</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">In the <code>server\</code> folder, make a copy of <code>.env.example</code> and name it exactly <code>.env</code> (dot env, no other extension).</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd</span><button class="copy-btn" onclick="cp(this,'copy .env.example .env')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> copy .env.example .env</pre>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">b</div><div><div class="step-title">Edit the .env file</div><div class="step-sub">Open with Notepad, VS Code, or any text editor</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">.env — fill in YOUR values</span><button class="copy-btn" onclick="cp(this,'# Server\nPORT=3000\nNODE_ENV=development\n\n# Database\nDB_SERVER=SERVER006\nDB_PORT=1433\nDB_DATABASE=Development_04052026\nDB_USER=sa\nDB_PASSWORD=YourActualPasswordHere\nDB_ENCRYPT=false\nDB_TRUST_CERT=true\nDB_WINDOWS_AUTH=false\n\n# JWT\nJWT_SECRET=CHANGE_THIS_NOW\nJWT_EXPIRES_IN=8h\nJWT_REFRESH_EXPIRES_IN=7d\n\n# CORS\nCORS_ORIGIN=http://localhost:5173\n\n# Bcrypt\nBCRYPT_ROUNDS=10\nLOG_LEVEL=debug')">Copy all</button></div>
+          <pre><span class="cm"># Server</span>
+<span class="ky">PORT</span>=<span class="vl">3000</span>
+<span class="ky">NODE_ENV</span>=<span class="vl">development</span>
+
+<span class="cm"># Database — change SERVER006 to your machine name or IP</span>
+<span class="cm"># If SQL Server is on THIS machine: use localhost</span>
+<span class="cm"># If it's on another machine on LAN: use the machine name or IP</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">SERVER006</span>
+<span class="ky">DB_PORT</span>=<span class="vl">1433</span>
+<span class="ky">DB_DATABASE</span>=<span class="vl">Development_04052026</span>
+<span class="ky">DB_USER</span>=<span class="vl">sa</span>
+<span class="ky">DB_PASSWORD</span>=<span class="vl">YourActualSaPasswordHere</span>
+<span class="ky">DB_ENCRYPT</span>=<span class="vl">false</span>
+<span class="ky">DB_TRUST_CERT</span>=<span class="vl">true</span>
+<span class="ky">DB_WINDOWS_AUTH</span>=<span class="vl">false</span>
+
+<span class="cm"># JWT — generate a real secret with the command below</span>
+<span class="ky">JWT_SECRET</span>=<span class="vl">CHANGE_THIS_TO_SOMETHING_LONG_AND_RANDOM</span>
+<span class="ky">JWT_EXPIRES_IN</span>=<span class="vl">8h</span>
+<span class="ky">JWT_REFRESH_EXPIRES_IN</span>=<span class="vl">7d</span>
+
+<span class="cm"># React dev server (leave as-is for now)</span>
+<span class="ky">CORS_ORIGIN</span>=<span class="vl">http://localhost:5173</span>
+
+<span class="ky">BCRYPT_ROUNDS</span>=<span class="vl">10</span>
+<span class="ky">LOG_LEVEL</span>=<span class="vl">debug</span></pre>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">c</div><div><div class="step-title">Generate a proper JWT secret</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">The JWT_SECRET must be a long random string. Run this command to generate one:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd</span><button class="copy-btn" onclick="cp(this,'node -e \"console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))\"')">Copy</button></div>
+          <pre><span class="pm">C:\></span> node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+<span class="st">a3f8c2d1e9b7...  ← copy this whole string into JWT_SECRET in your .env</span></pre>
+        </div>
+        <div class="box warn"><div class="box-icon">⚠️</div><div class="box-text"><strong>Never use a short or guessable JWT secret</strong> in any environment. Anyone who knows the secret can forge authentication tokens and log in as any user.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">d</div><div><div class="step-title">How to find your DB_SERVER value</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">You need the hostname or IP of the machine running SQL Server 2014.</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Options</span></div>
+          <pre><span class="cm"># Option A: SQL Server on this same Windows 11 machine</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">localhost</span>
+
+<span class="cm"># Option B: SQL Server on another machine by name (SERVER006)</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">SERVER006</span>
+
+<span class="cm"># Option C: SQL Server on another machine by IP</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">192.168.1.50</span>
+
+<span class="cm"># Option D: Named SQL Server instance (e.g. SERVER006\SQLEXPRESS)</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">SERVER006</span>
+<span class="ky">DB_INSTANCE</span>=<span class="vl">SQLEXPRESS</span>   <span class="cm">← add this line</span></pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px">To find SERVER006's IP: on SERVER006, open cmd and type <code>ipconfig</code>. Look for IPv4 Address.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 5 -->
+<div class="section" id="s5">
+  <div class="sec-header">
+    <div class="step-num">5</div>
+    <div>
+      <h2>Enable SQL Server TCP/IP (one-time setup)</h2>
+      <p>SQL Server blocks network connections by default — you need to turn this on</p>
+    </div>
+  </div>
+  <div class="box warn" style="margin-bottom:20px"><div class="box-icon">⚠️</div><div class="box-text"><strong>Do this on the machine running SQL Server 2014</strong> (SERVER006), not necessarily your dev machine. If they're the same machine, do it there.</div></div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">1</div><div><div class="step-title">Open SQL Server Configuration Manager</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Press <kbd>Win + R</kbd> → type <code>SQLServerManager12.msc</code> → Enter.<br>If that doesn't work search Start Menu for "SQL Server Configuration Manager".</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">2</div><div><div class="step-title">Enable TCP/IP</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">In the left panel: <strong>SQL Server Network Configuration → Protocols for MSSQLSERVER</strong>. In the right panel, right-click <strong>TCP/IP</strong> → <strong>Enable</strong>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">3</div><div><div class="step-title">Set TCP port to 1433</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Right-click TCP/IP → Properties → click the <strong>IP Addresses</strong> tab. Scroll to the very bottom to <strong>IPAll</strong>. Set <strong>TCP Port = 1433</strong>. Clear the TCP Dynamic Ports field (leave it blank).</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">4</div><div><div class="step-title">Restart SQL Server service</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">In Configuration Manager left panel: <strong>SQL Server Services</strong> → right-click <strong>SQL Server (MSSQLSERVER)</strong> → <strong>Restart</strong>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">5</div><div><div class="step-title">Open Windows Firewall port 1433</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Only needed if Node.js is on a different machine to SQL Server. Run this in an <strong>Administrator</strong> cmd:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd (Administrator)</span><button class="copy-btn" onclick="cp(this,'netsh advfirewall firewall add rule name=\"SQL Server 1433\" protocol=TCP dir=in localport=1433 action=allow')">Copy</button></div>
+          <pre><span class="pm">C:\></span> netsh advfirewall firewall add rule name="SQL Server 1433" protocol=TCP dir=in localport=1433 action=allow</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 6 -->
+<div class="section" id="s6">
+  <div class="sec-header">
+    <div class="step-num">6</div>
+    <div>
+      <h2>Test the database connection</h2>
+      <p>Before starting the server, verify Node can actually reach SQL Server</p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Run the test script</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd — inside server\</span><button class="copy-btn" onclick="cp(this,'node scripts/test-db.js')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> node scripts/test-db.js</pre>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">b</div><div><div class="step-title">What success looks like</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Expected output</span></div>
+          <pre>=== Spitwater ERP — Database Connection Test ===
+
+Server:   SERVER006:1433
+Database: Development_04052026
+Auth:     SQL (sa)
+
+Connecting...
+
+<span class="st">✅  Connection successful!</span>
+
+SQL Server: Microsoft SQL Server 2014 (SP3-CU4)...
+
+Tables in [Development_04052026]: <span class="st">148</span>
+<span class="st">✅  Schema looks complete!</span>
+
+Key tables:
+  <span class="st">✅  audit_log</span>
+  <span class="st">✅  org_members</span>
+  <span class="st">✅  organisations</span>
+  <span class="st">✅  refresh_tokens</span>
+  <span class="st">✅  users</span>
+
+Users in DB: 0
+<span class="vl">ℹ️  No users yet — run: node scripts/seed-admin.js</span>
+
+=== All checks passed — ready to start the server ===</pre>
+        </div>
+        <div class="box danger"><div class="box-icon">❌</div><div class="box-text">If you see <strong>Connection FAILED</strong> — scroll down to the <a href="#errors" style="color:var(--accent2)">Common Errors</a> section at the bottom of this guide.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 7 -->
+<div class="section" id="s7">
+  <div class="sec-header">
+    <div class="step-num">7</div>
+    <div>
+      <h2>Create the first admin user</h2>
+      <p>Seeds the database with the first organisation and a super admin account</p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">a</div><div><div class="step-title">Run the seed script</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd — inside server\</span><button class="copy-btn" onclick="cp(this,'node scripts/seed-admin.js')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> node scripts/seed-admin.js
+
+=== Spitwater ERP — First-Run Admin Setup ===
+
+Admin email address:    <span class="vl">admin@spitwater.com.au</span>
+Admin full name:        <span class="vl">Michael R.</span>
+Admin password (min 8): <span class="vl">••••••••••••</span>
+Organisation name       [Spitwater Australia]: <span class="vl">↵  (press Enter for default)</span>
+ABN                     [leave blank to skip]: <span class="vl">↵</span>
+
+Connecting to database...
+<span class="st">✅  Connected</span>
+<span class="st">✅  Organisation created: "Spitwater Australia" (id=1)</span>
+<span class="st">✅  Org settings initialised</span>
+<span class="st">✅  User created: "Michael R." (id=1)</span>
+<span class="st">✅  User added to org as super_admin</span>
+
+=================================================
+  <span class="st">✅  Setup complete! You can now log in:</span>
+     Email:    admin@spitwater.com.au
+     Password: (what you just entered)
+     Role:     super_admin
+
+  Start the server:   npm run dev
+  Test login:         POST http://localhost:3000/api/auth/login
+=================================================</pre>
+        </div>
+        <div class="box tip"><div class="box-icon">✅</div><div class="box-text">The script is <strong>safe to run again</strong> — it detects existing records and skips or updates them instead of crashing.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 8 -->
+<div class="section" id="s8">
+  <div class="sec-header">
+    <div class="step-num">8</div>
+    <div>
+      <h2>Start the server</h2>
+      <p>Two ways — dev mode with auto-restart, or plain node</p>
+    </div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">dev</div><div><div class="step-title">Development mode (recommended)</div><div class="step-sub">Auto-restarts when you save any .js file</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd — inside server\</span><button class="copy-btn" onclick="cp(this,'npm run dev')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> npm run dev
+
+<span class="st">2026-05-04 14:30:01 [info] DB: Using SQL Authentication as [sa]
+2026-05-04 14:30:02 [info] DB: Connected to [SERVER006].[Development_04052026]
+2026-05-04 14:30:02 [info] Server running on http://localhost:3000
+2026-05-04 14:30:02 [info] Environment: development
+2026-05-04 14:30:02 [info] CORS origin:  http://localhost:5173</span></pre>
+        </div>
+        <div class="box tip"><div class="box-icon">💡</div><div class="box-text">Keep this terminal open while developing. Press <kbd>Ctrl + C</kbd> to stop it.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">alt</div><div><div class="step-title">Plain node (no auto-restart)</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">cmd</span><button class="copy-btn" onclick="cp(this,'node server.js')">Copy</button></div>
+          <pre><span class="pm">C:\Projects\spitwater-erp\server></span> node server.js</pre>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">✓</div><div><div class="step-title">Verify it's running</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13.5px;color:var(--muted)">Open your browser and go to:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Browser</span><button class="copy-btn" onclick="cp(this,'http://localhost:3000/api/health')">Copy</button></div>
+          <pre>http://localhost:3000/api/health</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px">You should see:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">JSON response</span></div>
+          <pre>{
+  <span class="ky">"success"</span>: <span class="st">true</span>,
+  <span class="ky">"status"</span>:  <span class="st">"ok"</span>,
+  <span class="ky">"version"</span>: <span class="st">"1.0.0"</span>,
+  <span class="ky">"env"</span>:     <span class="st">"development"</span>,
+  <span class="ky">"time"</span>:    <span class="st">"2026-05-04T14:30:15.000Z"</span>
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STEP 9 -->
+<div class="section" id="s9">
+  <div class="sec-header">
+    <div class="step-num">9</div>
+    <div>
+      <h2>Test the API with Postman</h2>
+      <p>Download Postman (free) and test every auth endpoint end-to-end</p>
+    </div>
+  </div>
+
+  <div class="box info" style="margin-bottom:20px"><div class="box-icon">📥</div><div class="box-text"><strong>Download Postman:</strong> go to <code>postman.com/downloads</code> → download the Windows desktop app. It's free. Create a free account when it asks.</div></div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">1</div><div><div class="step-title">Test: Login</div><div class="step-sub">POST /api/auth/login</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13px;color:var(--muted)">In Postman: New Request → method <strong>POST</strong> → URL <code>http://localhost:3000/api/auth/login</code></p>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">Click the <strong>Body</strong> tab → select <strong>raw</strong> → change the dropdown to <strong>JSON</strong> → paste:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Request body (JSON)</span><button class="copy-btn" onclick="cp(this,'{\"email\": \"admin@spitwater.com.au\",\"password\": \"yourpassword\"}')">Copy</button></div>
+          <pre>{
+  <span class="ky">"email"</span>:    <span class="st">"admin@spitwater.com.au"</span>,
+  <span class="ky">"password"</span>: <span class="st">"yourpassword"</span>
+}</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px">Click <strong>Send</strong>. You should get back:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">200 OK response</span></div>
+          <pre>{
+  <span class="ky">"success"</span>: <span class="st">true</span>,
+  <span class="ky">"data"</span>: {
+    <span class="ky">"accessToken"</span>:  <span class="st">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."</span>,
+    <span class="ky">"refreshToken"</span>: <span class="st">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."</span>,
+    <span class="ky">"user"</span>: {
+      <span class="ky">"id"</span>:      <span class="vl">1</span>,
+      <span class="ky">"email"</span>:   <span class="st">"admin@spitwater.com.au"</span>,
+      <span class="ky">"name"</span>:    <span class="st">"Michael R."</span>,
+      <span class="ky">"role"</span>:    <span class="st">"super_admin"</span>,
+      <span class="ky">"orgId"</span>:   <span class="vl">1</span>,
+      <span class="ky">"orgName"</span>: <span class="st">"Spitwater Australia"</span>
+    }
+  }
+}</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px"><strong>Copy the accessToken value</strong> — you need it for the next requests.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">2</div><div><div class="step-title">Test: Get my profile</div><div class="step-sub">GET /api/auth/me — requires the token</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13px;color:var(--muted)">New Request → <strong>GET</strong> → <code>http://localhost:3000/api/auth/me</code></p>
+        <p style="font-size:13px;color:var(--muted);margin-top:6px">Click the <strong>Headers</strong> tab → add:</p>
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Header</span></div>
+          <pre><span class="ky">Key:</span>   <span class="vl">Authorization</span>
+<span class="ky">Value:</span> <span class="vl">Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</span>
+                <span class="cm">↑ paste your actual accessToken after "Bearer "</span></pre>
+        </div>
+        <div class="box tip"><div class="box-icon">💡</div><div class="box-text"><strong>Postman tip:</strong> Use the "Authorization" tab → type "Bearer Token" → paste just the token (without the word Bearer). Postman adds "Bearer " automatically.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">3</div><div><div class="step-title">Test: List users</div><div class="step-sub">GET /api/users — admin only</div></div></div>
+      <div class="step-body">
+        <p style="font-size:13px;color:var(--muted)"><strong>GET</strong> <code>http://localhost:3000/api/users</code> with the same Authorization header. Returns the list of all users in the org.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">4</div><div><div class="step-title">Test: Invite a user</div><div class="step-sub">POST /api/users/invite</div></div></div>
+      <div class="step-body">
+        <div class="code-block">
+          <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">Request body</span><button class="copy-btn" onclick="cp(this,'{\"email\": \"newuser@spitwater.com.au\",\"role\": \"editor\",\"full_name\": \"Sarah M.\"}')">Copy</button></div>
+          <pre>{
+  <span class="ky">"email"</span>:     <span class="st">"newuser@spitwater.com.au"</span>,
+  <span class="ky">"role"</span>:      <span class="st">"editor"</span>,
+  <span class="ky">"full_name"</span>: <span class="st">"Sarah M."</span>
+}</pre>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-top:8px">The response will include an <code>inviteLink</code> you can open directly in dev to accept the invite (email sending comes later).</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ENDPOINTS REFERENCE -->
+<div class="section" id="endpoints">
+  <div class="sec-header">
+    <div><h2>All API endpoints</h2><p>Phase 1 &amp; 2 — full reference</p></div>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <table class="test-table">
+      <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th><th>Auth</th></tr></thead>
+      <tbody>
+        <tr><td><span class="method m-get">GET</span></td><td><span class="endpoint">/api/health</span></td><td class="td-desc">Server + DB health check</td><td class="td-auth"><span class="pill p-open">Public</span></td></tr>
+        <tr><td><span class="method m-post">POST</span></td><td><span class="endpoint">/api/auth/login</span></td><td class="td-desc">Login — returns access + refresh tokens</td><td class="td-auth"><span class="pill p-open">Public</span></td></tr>
+        <tr><td><span class="method m-post">POST</span></td><td><span class="endpoint">/api/auth/refresh</span></td><td class="td-desc">Exchange refresh token for new access token</td><td class="td-auth"><span class="pill p-open">Public</span></td></tr>
+        <tr><td><span class="method m-post">POST</span></td><td><span class="endpoint">/api/auth/logout</span></td><td class="td-desc">Revoke refresh token</td><td class="td-auth"><span class="pill p-lock">JWT</span></td></tr>
+        <tr><td><span class="method m-get">GET</span></td><td><span class="endpoint">/api/auth/me</span></td><td class="td-desc">Current user's profile from DB</td><td class="td-auth"><span class="pill p-lock">JWT</span></td></tr>
+        <tr><td><span class="method m-post">POST</span></td><td><span class="endpoint">/api/auth/change-password</span></td><td class="td-desc">Change own password, revokes all refresh tokens</td><td class="td-auth"><span class="pill p-lock">JWT</span></td></tr>
+        <tr><td><span class="method m-get">GET</span></td><td><span class="endpoint">/api/users</span></td><td class="td-desc">List all users in org</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-get">GET</span></td><td><span class="endpoint">/api/users/:id</span></td><td class="td-desc">Get one user</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-post">POST</span></td><td><span class="endpoint">/api/users/invite</span></td><td class="td-desc">Invite a new user — returns invite link</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-get">GET</span></td><td><span class="endpoint">/api/users/invites/list</span></td><td class="td-desc">List pending invitations</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-patch">PATCH</span></td><td><span class="endpoint">/api/users/:id</span></td><td class="td-desc">Update user name / phone</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-patch">PATCH</span></td><td><span class="endpoint">/api/users/:id/role</span></td><td class="td-desc">Change user's role</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-patch">PATCH</span></td><td><span class="endpoint">/api/users/:id/deactivate</span></td><td class="td-desc">Soft-deactivate user (no DELETE)</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+        <tr><td><span class="method m-del">DELETE</span></td><td><span class="endpoint">/api/users/invites/:id</span></td><td class="td-desc">Revoke a pending invite</td><td class="td-auth"><span class="pill p-lock">Admin+</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- CONFIG REFERENCE -->
+<div class="section" id="config">
+  <div class="sec-header"><div><h2>.env settings explained</h2><p>Every variable and what it does</p></div></div>
+  <div class="code-block">
+    <div class="code-top"><div class="code-dots"><div class="d-r"></div><div class="d-y"></div><div class="d-g"></div></div><span class="code-lang">.env — full reference</span></div>
+    <pre><span class="cm"># ── Server ───────────────────────────────────────────────────────────</span>
+<span class="ky">PORT</span>=<span class="vl">3000</span>               <span class="cm">  The port Express listens on. 3000 is the convention.</span>
+<span class="ky">NODE_ENV</span>=<span class="vl">development</span>   <span class="cm">  "development" = verbose errors. "production" = safe errors.</span>
+
+<span class="cm"># ── Database ─────────────────────────────────────────────────────────</span>
+<span class="ky">DB_SERVER</span>=<span class="vl">SERVER006</span>    <span class="cm">  Machine name or IP of the SQL Server host.</span>
+<span class="ky">DB_PORT</span>=<span class="vl">1433</span>           <span class="cm">  SQL Server port. Default is 1433.</span>
+<span class="ky">DB_DATABASE</span>=<span class="vl">Development_04052026</span>  <span class="cm">  Database name. Must match SSMS.</span>
+<span class="ky">DB_USER</span>=<span class="vl">sa</span>             <span class="cm">  SQL Auth username. "sa" is the system admin.</span>
+<span class="ky">DB_PASSWORD</span>=<span class="vl">...</span>        <span class="cm">  SQL Auth password. Keep it safe.</span>
+<span class="ky">DB_ENCRYPT</span>=<span class="vl">false</span>       <span class="cm">  true only if SQL Server has a proper SSL cert.</span>
+<span class="ky">DB_TRUST_CERT</span>=<span class="vl">true</span>     <span class="cm">  Bypasses SSL cert validation. Fine for LAN dev.</span>
+<span class="ky">DB_WINDOWS_AUTH</span>=<span class="vl">false</span>  <span class="cm">  true = use Windows login, ignore DB_USER/PASSWORD.</span>
+<span class="ky">DB_INSTANCE</span>=<span class="vl">SQLEXPRESS</span> <span class="cm">  Only needed for named instances (e.g. SERVER\SQLEXPRESS).</span>
+
+<span class="cm"># ── JWT ──────────────────────────────────────────────────────────────</span>
+<span class="ky">JWT_SECRET</span>=<span class="vl">...</span>         <span class="cm">  64+ char random string. Signs all tokens. KEEP SECRET.</span>
+<span class="ky">JWT_EXPIRES_IN</span>=<span class="vl">8h</span>     <span class="cm">  Access token lifetime. 8h = user stays logged in 8 hours.</span>
+<span class="ky">JWT_REFRESH_EXPIRES_IN</span>=<span class="vl">7d</span>  <span class="cm">  Refresh token lifetime. 7d = silent re-auth for 7 days.</span>
+
+<span class="cm"># ── CORS ─────────────────────────────────────────────────────────────</span>
+<span class="ky">CORS_ORIGIN</span>=<span class="vl">http://localhost:5173</span>  <span class="cm">  Vite dev server. Add your prod domain in prod.</span>
+
+<span class="cm"># ── Bcrypt ───────────────────────────────────────────────────────────</span>
+<span class="ky">BCRYPT_ROUNDS</span>=<span class="vl">10</span>       <span class="cm">  Password hashing cost. 10=dev (fast), 12=prod (secure).</span>
+
+<span class="cm"># ── Logging ──────────────────────────────────────────────────────────</span>
+<span class="ky">LOG_LEVEL</span>=<span class="vl">debug</span>        <span class="cm">  debug=everything, info=normal, warn=warnings, error=only errors.</span></pre>
+  </div>
+</div>
+
+<!-- COMMON ERRORS -->
+<div class="section" id="errors">
+  <div class="sec-header"><div><h2>Common errors &amp; fixes</h2></div></div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">ConnectionError: Failed to connect to SERVER006:1433</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text">
+          <strong>Fix checklist:</strong><br>
+          1. SQL Server service is running (check Services or SQL Config Manager)<br>
+          2. TCP/IP is enabled in SQL Config Manager (Step 5)<br>
+          3. Port 1433 is open in Windows Firewall<br>
+          4. DB_SERVER in .env matches the actual machine name or IP<br>
+          5. Named instance? Add <code>DB_INSTANCE=SQLEXPRESS</code> to .env
+        </div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">Login failed for user 'sa'</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text">
+          <strong>Fix:</strong> In SSMS, right-click the server → Properties → Security → make sure "SQL Server and Windows Authentication mode" is selected. Then right-click the sa login → Properties → make sure it's enabled and the password matches your .env.
+        </div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">Cannot find module 'mssql' or similar</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text"><strong>Fix:</strong> You haven't run <code>npm install</code> yet, or you're in the wrong folder. Make sure your terminal is inside <code>server\</code> and run <code>npm install</code>.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">401 Unauthorized on protected routes</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text"><strong>Fix:</strong> You need to include the Authorization header. In Postman: Headers tab → add <code>Authorization: Bearer YOUR_TOKEN_HERE</code>. Get the token from the login endpoint first.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">nodemon is not recognized</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text"><strong>Fix:</strong> Run <code>npm install -g nodemon</code>. If still not found, close the terminal and open a new one, or use <code>node server.js</code> instead of <code>npm run dev</code>.</div></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-head"><div class="step-badge">❌</div><div><div class="step-title">EADDRINUSE: port 3000 already in use</div></div></div>
+      <div class="step-body">
+        <div class="box danger"><div class="box-icon">🔧</div><div class="box-text"><strong>Fix:</strong> Another process is using port 3000. Either kill it: in cmd run <code>netstat -ano | findstr :3000</code> then <code>taskkill /PID &lt;number&gt; /F</code>. Or change <code>PORT=3001</code> in your .env.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VERIFICATION CHECKLIST -->
+<div class="section">
+  <div class="sec-header"><div><h2>Final verification checklist</h2><p>Tick each one off as you confirm it's working</p></div></div>
+  <div class="checklist">
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">Node.js installed</div><div class="chk-desc">Run <code>node --version</code> — shows v18+</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">npm install completed</div><div class="chk-desc">No red errors, node_modules folder exists</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">.env file created with real values</div><div class="chk-desc">DB_PASSWORD and JWT_SECRET are set to actual values</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">DB connection test passes</div><div class="chk-desc"><code>node scripts/test-db.js</code> shows 148 tables ✅</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">First admin created</div><div class="chk-desc"><code>node scripts/seed-admin.js</code> completed successfully</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">Server starts clean</div><div class="chk-desc"><code>npm run dev</code> — no errors, shows "Connected" and "Server running"</div><div class="chk-url">http://localhost:3000/api/health → {"success":true}</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">Login works in Postman</div><div class="chk-desc">POST /api/auth/login returns accessToken + refreshToken</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">Protected route works</div><div class="chk-desc">GET /api/auth/me with Bearer token returns user object</div></div>
+    </div>
+    <div class="chk" onclick="this.classList.toggle('done')">
+      <div class="chk-box"><svg class="chk-tick" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2.5"><polyline points="1,6 4,9 11,3"/></svg></div>
+      <div><div class="chk-title">Users list works</div><div class="chk-desc">GET /api/users with Bearer token returns user array</div></div>
+    </div>
+  </div>
+  <div class="box tip" style="margin-top:20px"><div class="box-icon">🎉</div><div class="box-text"><strong>All checked?</strong> Phase 1 &amp; 2 are complete. The backend is live and auth is working end-to-end against the real database. Next: Phase 3 — build the React frontend with Vite that calls these APIs.</div></div>
+</div>
+
+<footer>Spitwater ERP · Developer Guide · Phase 1 &amp; 2 · v1.0.0</footer>
+</div><!-- /content -->
+</div><!-- /layout -->
+
+<script>
+// Scroll progress
+window.addEventListener('scroll',()=>{
+  const d=document.documentElement;
+  const pct=(d.scrollTop/(d.scrollHeight-d.clientHeight))*100;
+  document.getElementById('pb').style.width=pct+'%';
+});
+
+// Sidebar nav
+function go(id,el){
+  document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
+  document.querySelectorAll('.sb-link').forEach(l=>l.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Highlight active section on scroll
+const sections=['overview','structure','s1','s2','s3','s4','s5','s6','s7','s8','s9','endpoints','config','errors'];
+const links=document.querySelectorAll('.sb-link');
+window.addEventListener('scroll',()=>{
+  let cur='';
+  sections.forEach(id=>{const el=document.getElementById(id);if(el&&el.getBoundingClientRect().top<160)cur=id;});
+  links.forEach(l=>{
+    l.classList.remove('active');
+    if(l.getAttribute('onclick')?.includes(`'${cur}'`))l.classList.add('active');
+  });
+},{passive:true});
+
+// Copy buttons
+function cp(btn,text){
+  navigator.clipboard.writeText(text).then(()=>{
+    btn.textContent='Copied!';btn.classList.add('ok');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('ok');},2000);
+  });
+}
+</script>
+</body>
+</html>

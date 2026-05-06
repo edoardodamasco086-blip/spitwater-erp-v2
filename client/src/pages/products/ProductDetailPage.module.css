@@ -1,0 +1,80 @@
+.page   { padding: 24px 32px; display: flex; flex-direction: column; gap: 16px; height: 100%; overflow: hidden; }
+
+/* Header */
+.header     { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.backBtn    { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 14px; display: flex; align-items: center; gap: 4px; padding: 0; font-family: inherit; transition: opacity 0.15s; }
+.backBtn:hover { opacity: 0.75; }
+.breadSep   { color: var(--border-dark); }
+.codeChip   { font-family: 'DM Mono'; font-size: 12.5px; background: var(--accent-dim); color: var(--accent); padding: 3px 10px; border-radius: 20px; }
+
+/* Alerts */
+.errorBox   { display: flex; align-items: center; gap: 8px; background: var(--red-dim); border: 1px solid rgba(224,82,82,0.2); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--red); flex-shrink: 0; }
+.successBox { background: var(--green-dim); border: 1px solid rgba(46,204,138,0.2); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: #1EA870; flex-shrink: 0; }
+
+/* Tabs */
+.tabs     { display: flex; gap: 0; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab      { padding: 10px 18px; background: none; border: none; font-size: 13.5px; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s; font-family: inherit; display: flex; align-items: center; gap: 6px; }
+.tab:hover  { color: var(--text); }
+.tabActive  { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+.tabBadge   { background: var(--accent-dim); color: var(--accent); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+
+/* Body */
+.body { flex: 1; overflow-y: auto; min-height: 0; }
+
+/* Overview layout */
+.formLayout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: flex-start; padding-bottom: 32px; }
+.mainCol    { display: flex; flex-direction: column; gap: 16px; }
+.sideCol    { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; }
+
+/* Cards */
+.card       { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.cardTitle  { font-size: 13.5px; font-weight: 600; margin-bottom: 14px; }
+
+/* Grids */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; }
+
+/* Side column */
+.primaryImg { width: 100%; border-radius: 8px; object-fit: cover; max-height: 200px; }
+.noImage    { height: 100px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; display: grid; place-items: center; font-size: 13px; color: var(--text-sub); }
+
+/* Tab content */
+.tabContent { padding: 20px 0 32px; }
+
+/* Upload area */
+.uploadArea { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.uploadBtn  {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 18px; background: var(--card); border: 1px dashed var(--border-dark);
+  border-radius: 8px; font-size: 13.5px; color: var(--text-sub); cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+}
+.uploadBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.uploadBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+.uploadHint { font-size: 12px; color: var(--text-sub); }
+
+/* Image grid */
+.imageGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.imageCard { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: border-color 0.15s; }
+.imagePrimary { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.imagePreview { width: 100%; height: 150px; object-fit: cover; display: block; }
+.primaryBadge {
+  background: var(--accent); color: white; font-size: 10px; font-weight: 700;
+  text-align: center; padding: 3px 0; letter-spacing: 0.05em;
+}
+.imageActions { display: flex; gap: 6px; padding: 10px; flex-wrap: wrap; }
+
+/* Document list */
+.docList { display: flex; flex-direction: column; gap: 8px; }
+.docRow  { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.docInfo { flex: 1; }
+.docName { font-size: 13.5px; font-weight: 500; }
+.docMeta { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+/* Custom fields grid */
+.customGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Empty states */
+.emptyTab { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 20px; color: var(--text-sub); font-size: 14px; text-align: center; }
