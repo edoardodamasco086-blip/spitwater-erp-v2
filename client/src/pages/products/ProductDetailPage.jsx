@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { productsApi } from '../../api/products';
 import { productUomApi, currencyApi } from '../../api/productUom';
 import { useFieldValidation } from '../../hooks/useFieldValidation';
+import RelationshipsTab from './RelationshipsTab';
 import styles from './ProductDetailPage.module.css';
 
 const TABS = [
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'custom',     label: 'Custom Fields'  },
   { key: 'pricing',    label: 'Pricing'        },
   { key: 'stock',      label: 'Stock'          },
+  { key: 'relationships', label: 'Relationships' },
 ];
 
 function formatCurrency(v) {
@@ -819,6 +821,13 @@ export default function ProductDetailPage() {
                 setSupplierPrices(r.data.data || []);
               }}
             />
+          </div>
+        )}
+
+        {/* ── RELATIONSHIPS TAB ── */}
+        {!isNew && activeTab === 'relationships' && (
+          <div className={styles.tabContent}>
+            <RelationshipsTab productId={id} />
           </div>
         )}
 

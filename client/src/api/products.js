@@ -66,4 +66,10 @@ export const productsApi = {
     });
   },
   deleteDocument: (id, docId) => client.delete(`/products/${id}/documents/${docId}`),
+  
+  // Associations
+  listAssociations:     (id)        => client.get(`/products/${id}/associations`),
+  addAssociation:       (id, data)  => client.post(`/products/${id}/associations`, data),
+  updateAssociation:    (id, assocId, data) => client.patch(`/products/${id}/associations/${assocId}`, data),
+  removeAssociation:    (id, assocId) => client.delete(`/products/${id}/associations/${assocId}`),
 };

@@ -32,6 +32,8 @@ const productUomRoutes      = require('./routes/product-uom');
 const priceListRoutes       = require('./routes/price-lists');
 const productsRoutes        = require('./routes/products');
 const productSuppliersRoutes = require('./routes/product-suppliers');
+const productAssociationTypesRoutes = require('./routes/product-association-types');
+const productAssociationsRoutes = require('./routes/product-associations');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -117,6 +119,8 @@ app.use('/api/product-uom',       productUomRoutes);
 app.use('/api/price-lists',       priceListRoutes);
 app.use('/api/products',          productsRoutes);
 app.use('/api/products',          productSuppliersRoutes);
+app.use('/api/product-association-types', productAssociationTypesRoutes);
+app.use('/api/products/:id',      productAssociationsRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

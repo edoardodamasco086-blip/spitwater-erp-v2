@@ -5,6 +5,7 @@ import SmtpSettings      from './sections/SmtpSettings';
 import CurrencySettings    from './sections/CurrencySettings';
 import NumberingSettings from './sections/NumberingSettings';
 import WarehouseSettings from './sections/WarehouseSettings';
+import ProductAssociationTypes from './sections/ProductAssociationTypes';
 import AuditLog          from './sections/AuditLog';
 import styles from './SettingsPage.module.css';
 
@@ -13,6 +14,7 @@ const SECTIONS = [
   { key: 'smtp',       label: 'Email & SMTP',       icon: MailIcon,      desc: 'Mail server configuration'        },
   { key: 'numbering',  label: 'Numbering Series',   icon: HashIcon,      desc: 'Invoice, PO and job numbers'      },
   { key: 'warehouses', label: 'Warehouses',          icon: WarehouseIcon, desc: 'Locations and stock sites'        },
+  { key: 'associations', label: 'Product Relations', icon: LinkIcon,      desc: 'Define product relationship types' },
   { key: 'audit',      label: 'Audit Log',           icon: AuditIcon,     desc: 'Full activity history'            },
 ];
 
@@ -59,6 +61,7 @@ export default function SettingsPage() {
             {active === 'smtp'       && <SmtpSettings />}
             {active === 'numbering'  && <NumberingSettings />}
             {active === 'warehouses' && <WarehouseSettings />}
+            {active === 'associations' && <ProductAssociationTypes />}
             {active === 'audit'      && <AuditLog />}
           </div>
         </div>
@@ -80,3 +83,4 @@ function MailIcon()      { return <SvgIcon><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 
 function HashIcon()      { return <SvgIcon><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></SvgIcon>; }
 function WarehouseIcon() { return <SvgIcon><path d="M1 22h22"/><rect x="3" y="10" width="18" height="12"/><path d="M3 10L12 3l9 7"/></SvgIcon>; }
 function AuditIcon()     { return <SvgIcon><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></SvgIcon>; }
+function LinkIcon()      { return <SvgIcon><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></SvgIcon>; }
