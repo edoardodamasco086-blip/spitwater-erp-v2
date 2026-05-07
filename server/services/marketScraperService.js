@@ -2,88 +2,120 @@ const logger = require('../config/logger');
 const axios = require('axios');
 
 /**
- * Scrapes real market data using SerpApi.
- * Searches Google for the product and returns structured results.
+ * Calculates a basic accuracy score (0-100) based on query matching.
+ * Stricter logic to avoid generic matches like paint.
  */
+function calculateAccuracy(query, title) {
+  if (!title || !query) return 0;
+  const t = title.toLowerCase();
+  const q = query.toLowerCase();
+  
+  // Exact match for the part number/SKU
+  if (t.includes(q)) return 100;
+  
+  // High confidence if it contains the part number with different separators
+  const normalizedQ = q.replace(/[^a-z0-9]/g, '');
+  const normalizedT = t.replace(/[^a-z0-9]/g, '');
+  if (normalizedT.includes(normalizedQ)) return 95;
+
+  // Fuzzy match: if most of the query is found
+  if (q.length > 5) {
+    const part = q.substring(0, 6);
+    if (t.includes(part)) return 80;
+  }
+  
+  return 30; // Low score for generic matches
+}
+
 async function scrapeMarketDataForProduct(product, query) {
   const apiKey = process.env.SERP_API_KEY;
-  
-  if (!apiKey) {
-    logger.warn('[Scraper] No SERP_API_KEY found in .env. Falling back to empty results.');
-    return [];
-  }
+  if (!apiKey) return [];
 
-  logger.info(`[Scraper] Performing REAL search for EXACT query: "${query}"`);
+  logger.info(`[Scraper] Searching for EXACT query: "${query}"`);
 
   try {
     const results = [];
     
-    // 1. Try Google Shopping first for clean price data
+    // 1. Google Shopping
     const response = await axios.get('https://serpapi.com/search', {
       params: {
         engine: 'google_shopping',
-        q: query, // ONLY the SKU/Part Number
+        q: query,
         google_domain: 'google.com.au',
-        hl: 'en',
-        gl: 'au',
-        location: 'Australia',
-        api_key: apiKey
+        hl: 'en', gl: 'au', location: 'Australia', api_key: apiKey
       }
     });
 
-    const shoppingResults = response.data.shopping_results || [];
-    shoppingResults.slice(0, 15).forEach(res => {
-      if (res.link) {
+    (response.data.shopping_results || []).slice(0, 10).forEach(res => {
+      const accuracy = calculateAccuracy(query, res.title);
+      if (accuracy >= 70) {
         results.push({
           website_source: res.source || extractDomain(res.link),
           url: res.link,
-          price: typeof res.price === 'string' ? parseFloat(res.price.replace(/[^0-9.]/g, '')) : (res.price || null),
+          price: findPriceInObject(res),
           description: res.title,
-          accuracy_score: calculateAccuracy(query, res.title),
+          accuracy_score: accuracy,
           search_query: query
         });
       }
     });
 
-    // 2. Try Organic Search for direct dealer sites that might not be in Shopping
+    // 2. Organic Search
     const organicResponse = await axios.get('https://serpapi.com/search', {
       params: {
         engine: 'google',
-        q: query, // ONLY the SKU/Part Number
+        q: query,
         google_domain: 'google.com.au',
-        hl: 'en',
-        gl: 'au',
-        location: 'Australia',
-        api_key: apiKey,
-        num: 20 // Get more results to find specific dealers
+        hl: 'en', gl: 'au', location: 'Australia', api_key: apiKey, num: 20
       }
     });
     
-    const organicResults = organicResponse.data.organic_results || [];
-    organicResults.forEach(res => {
-      if (res.link) {
-        // Only add if not already in shopping results
-        if (!results.find(r => r.url === res.link)) {
-          results.push({
-            website_source: extractDomain(res.link),
-            url: res.link,
-            price: res.rich_snippet?.shopping?.price ? parseFloat(res.rich_snippet.shopping.price.replace(/[^0-9.]/g, '')) : extractPrice(res.snippet || res.title),
-            description: res.title,
-            accuracy_score: calculateAccuracy(query, res.title),
-            search_query: query
-          });
-        }
+    (organicResponse.data.organic_results || []).forEach(res => {
+      const accuracy = calculateAccuracy(query, res.title);
+      if (accuracy >= 70 && !results.find(r => r.url === res.link)) {
+        results.push({
+          website_source: extractDomain(res.link),
+          url: res.link,
+          price: findPriceInObject(res),
+          description: res.title,
+          accuracy_score: accuracy,
+          search_query: query
+        });
       }
     });
 
+    // 3. Dedicated eBay Search
+    try {
+      const ebayResponse = await axios.get('https://serpapi.com/search', {
+        params: {
+          engine: 'ebay',
+          _nkw: query,
+          ebay_domain: 'ebay.com.au',
+          api_key: apiKey
+        }
+      });
+      
+      (ebayResponse.data.search_results || []).slice(0, 5).forEach(res => {
+        const accuracy = calculateAccuracy(query, res.title);
+        if (accuracy >= 70) {
+          results.push({
+            website_source: 'ebay.com.au',
+            url: res.link,
+            price: findPriceInObject(res),
+            description: res.title,
+            accuracy_score: accuracy,
+            search_query: query
+          });
+        }
+      });
+    } catch (e) {}
+
     return results;
   } catch (err) {
-    logger.error(`[Scraper] SerpApi request failed: ${err.message}`);
+    logger.error(`[Scraper] SerpApi failed: ${err.message}`);
     return [];
   }
 }
-
-
 
 /**
  * Extracts the domain name from a URL
@@ -98,33 +130,82 @@ function extractDomain(url) {
 }
 
 /**
- * Attempts to find a price (e.g. $45.00) in a string
+ * Deeply searches an object for any price-like strings
  */
-function extractPrice(text) {
-  if (!text) return null;
-  const match = text.match(/\$\s?([0-9,]+\.[0-9]{2})/);
-  if (match) return parseFloat(match[1].replace(',', ''));
+function findPriceInObject(obj) {
+  if (!obj) return null;
+  
+  if (typeof obj === 'string') return extractPrice(obj);
+  if (typeof obj === 'number' && obj > 0 && obj < 1000000) return obj;
+
+  if (typeof obj === 'object') {
+    // 1. Check known price fields
+    const priceFields = ['price', 'extracted_price', 'value', 'amount'];
+    for (const field of priceFields) {
+      if (obj[field] !== undefined) {
+        if (typeof obj[field] === 'number') return obj[field];
+        const found = extractPrice(String(obj[field]));
+        if (found !== null) return found;
+      }
+    }
+
+    // 2. Check rich snippets (including nested extensions)
+    const richSnippet = obj.rich_snippet || obj.rich_snippets;
+    if (richSnippet) {
+      // Check shopping specific
+      if (richSnippet.shopping?.price) return extractPrice(richSnippet.shopping.price);
+      
+      // Check bottom extensions (e.g. Sparesbox uses this)
+      if (richSnippet.bottom?.detected_extensions?.price) return richSnippet.bottom.detected_extensions.price;
+      if (richSnippet.bottom?.extensions) {
+        for (const ext of richSnippet.bottom.extensions) {
+          const found = extractPrice(ext);
+          if (found !== null) return found;
+        }
+      }
+    }
+
+    // 3. Check detected_extensions directly (if at top level)
+    if (obj.detected_extensions?.price) return obj.detected_extensions.price;
+
+    // 4. Recursive fallback for any other fields (safe search)
+    const fallbackFields = ['snippet', 'title', 'source'];
+    for (const field of fallbackFields) {
+      if (obj[field]) {
+        const found = extractPrice(String(obj[field]));
+        if (found !== null) return found;
+      }
+    }
+  }
   return null;
 }
 
 /**
- * Calculates a basic accuracy score (0-100) based on query matching
+ * Attempts to find a price (e.g. $45.00, $45) in a string.
+ * REQUIRES a currency symbol to avoid false positives.
  */
-function calculateAccuracy(query, title) {
-  if (!title || !query) return 0;
-  const t = title.toLowerCase();
-  const q = query.toLowerCase();
+function extractPrice(text) {
+  if (!text || typeof text !== 'string') return null;
   
-  if (t.includes(q)) return 100;
+  const cleanText = text.replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
   
-  // Fuzzy match: if part of the query is found
-  if (q.length > 4 && t.includes(q.substring(0, 5))) return 70;
+  // Strict regex: MUST have a currency symbol
+  const regexes = [
+    /(?:\$|AUD|AU\$|USD)\s?([0-9,]+\.[0-9]{2})/, // $79.95
+    /(?:\$|AUD|AU\$|USD)\s?([0-9,]+)/            // $79
+  ];
   
-  return 50; // Minimum for appearing in results
+  for (const regex of regexes) {
+    const match = cleanText.match(regex);
+    if (match) {
+      const val = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(val) && val > 0 && val < 1000000) return val;
+    }
+  }
+  
+  return null;
 }
 
 module.exports = {
   scrapeMarketDataForProduct
 };
-
-

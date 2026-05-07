@@ -1321,7 +1321,7 @@ router.get('/:id/market-data', requirePermission('products', 'read'), asyncHandl
       SELECT id, website_source, url, price, currency, description, accuracy_score, search_query, scraped_at
       FROM product_competitor_data
       WHERE org_id = @org_id AND product_id = @product_id
-      ORDER BY scraped_at DESC, accuracy_score DESC
+      ORDER BY accuracy_score DESC, (CASE WHEN price IS NULL THEN 1 ELSE 0 END) ASC, price DESC, scraped_at DESC
     `);
     
   return res.json({ success: true, data: rows.recordset });
@@ -1333,15 +1333,13 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
   const productId = parseInt(req.params.id);
   const orgId = req.user.orgId;
   
-  // 1. Delete today's existing records for this product to avoid clutter
+  // 1. Delete ALL existing records for this product to ensure we only show current relevant data
   await pool.request()
     .input('org_id', sql.Int, orgId)
     .input('product_id', sql.Int, productId)
     .query(`
       DELETE FROM product_competitor_data 
-      WHERE org_id = @org_id 
-        AND product_id = @product_id 
-        AND CAST(scraped_at AS DATE) = CAST(GETDATE() AS DATE)
+      WHERE org_id = @org_id AND product_id = @product_id
     `);
 
   // 2. Get product details and ALL associated supplier part numbers
@@ -1353,7 +1351,7 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
              (SELECT TOP 1 name FROM product_categories WHERE id=p.category_id) as brand,
              ps.supplier_part_number
       FROM products p
-      LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id
+      LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id AND ps.is_active = 1
       WHERE p.id=@id AND p.org_id=@org_id
     `);
     
@@ -1408,7 +1406,7 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
       SELECT id, website_source, url, price, currency, description, accuracy_score, search_query, scraped_at
       FROM product_competitor_data
       WHERE org_id = @org_id AND product_id = @product_id
-      ORDER BY scraped_at DESC, accuracy_score DESC
+      ORDER BY accuracy_score DESC, (CASE WHEN price IS NULL THEN 1 ELSE 0 END) ASC, price DESC, scraped_at DESC
     `);
 
   return res.json({ 

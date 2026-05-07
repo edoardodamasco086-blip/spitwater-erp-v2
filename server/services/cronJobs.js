@@ -13,7 +13,7 @@ cron.schedule('0 2 * * *', async () => {
              (SELECT TOP 1 name FROM product_categories WHERE id=p.category_id) as brand,
              ps.supplier_part_number
       FROM products p
-      LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id
+      LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id AND ps.is_active = 1
       WHERE p.is_active = 1
     `);
     
