@@ -4,10 +4,12 @@ import { productsApi } from '../../api/products';
 import { productUomApi, currencyApi } from '../../api/productUom';
 import { useFieldValidation } from '../../hooks/useFieldValidation';
 import RelationshipsTab from './RelationshipsTab';
+import AiMarketTab from './AiMarketTab';
 import styles from './ProductDetailPage.module.css';
 
 const TABS = [
   { key: 'overview',   label: 'Overview'       },
+  { key: 'ai_market',  label: 'AI Market Analysis' },
   { key: 'suppliers',  label: 'Suppliers'      },
   { key: 'packaging',  label: 'Packaging'      },
   { key: 'images',     label: 'Images'         },
@@ -665,6 +667,11 @@ export default function ProductDetailPage() {
               )}
             </div>
           </form>
+        )}
+
+        {/* ── AI MARKET TAB ── */}
+        {!isNew && activeTab === 'ai_market' && (
+          <AiMarketTab productId={id} />
         )}
 
         {/* ── IMAGES TAB ── */}

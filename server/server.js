@@ -15,6 +15,7 @@ const path       = require('path');
 const logger                            = require('./config/logger');
 const { poolConnect }                   = require('./config/db');
 const { notFound, globalErrorHandler }  = require('./middleware/errorHandler');
+require('./services/cronJobs');
 
 // ── Import routes ─────────────────────────────────────────────
 const authRoutes      = require('./routes/auth');

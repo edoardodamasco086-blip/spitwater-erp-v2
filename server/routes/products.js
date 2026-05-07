@@ -55,6 +55,7 @@ const { asyncHandler }                        = require('../middleware/errorHand
 const { uploadProductImage, uploadProductDocument, deleteFile } = require('../middleware/upload');
 const { getNextNumber }                       = require('../utils/numbering');
 const logger                                  = require('../config/logger');
+const { scrapeMarketDataForProduct }          = require('../services/marketScraperService');
 
 router.use(requireAuth);
 
@@ -1302,6 +1303,119 @@ router.get('/:id/stock', requirePermission('products','read'), asyncHandler(asyn
 
   const total = rows.recordset.reduce((sum, r) => sum + (r.qty_on_hand || 0), 0);
   return res.json({ success: true, data: rows.recordset, meta: { total_on_hand: total } });
+}));
+
+// ────────────────────────────────────────────────────────────────
+// MARKET DATA (AI Competitor Tracking)
+// ────────────────────────────────────────────────────────────────
+
+// ── GET /api/products/:id/market-data ────────────────────────
+router.get('/:id/market-data', requirePermission('products', 'read'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const productId = parseInt(req.params.id);
+  
+  const rows = await pool.request()
+    .input('org_id', sql.Int, req.user.orgId)
+    .input('product_id', sql.Int, productId)
+    .query(`
+      SELECT id, website_source, url, price, currency, description, accuracy_score, search_query, scraped_at
+      FROM product_competitor_data
+      WHERE org_id = @org_id AND product_id = @product_id
+      ORDER BY scraped_at DESC, accuracy_score DESC
+    `);
+    
+  return res.json({ success: true, data: rows.recordset });
+}));
+
+// ── POST /api/products/:id/market-data/refresh ──────────────
+router.post('/:id/market-data/refresh', requirePermission('products', 'update'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const productId = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+  
+  // 1. Delete today's existing records for this product to avoid clutter
+  await pool.request()
+    .input('org_id', sql.Int, orgId)
+    .input('product_id', sql.Int, productId)
+    .query(`
+      DELETE FROM product_competitor_data 
+      WHERE org_id = @org_id 
+        AND product_id = @product_id 
+        AND CAST(scraped_at AS DATE) = CAST(GETDATE() AS DATE)
+    `);
+
+  // 2. Get product details and ALL associated supplier part numbers
+  const productRes = await pool.request()
+    .input('org_id', sql.Int, orgId)
+    .input('id', sql.Int, productId)
+    .query(`
+      SELECT p.id, p.product_code, 
+             (SELECT TOP 1 name FROM product_categories WHERE id=p.category_id) as brand,
+             ps.supplier_part_number
+      FROM products p
+      LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id
+      WHERE p.id=@id AND p.org_id=@org_id
+    `);
+    
+  if (!productRes.recordset.length) return res.status(404).json({ success: false, error: 'Product not found.' });
+  
+  const brand = productRes.recordset[0].brand;
+  const sku = productRes.recordset[0].product_code;
+  
+  // Collect all unique queries to run
+  const queries = new Set();
+  if (sku) queries.add(sku);
+  productRes.recordset.forEach(row => {
+    if (row.supplier_part_number) queries.add(row.supplier_part_number);
+  });
+  
+  const allCompetitors = [];
+  
+  // 3. Loop through all queries and call the scraper
+  for (const queryStr of queries) {
+    try {
+      const results = await scrapeMarketDataForProduct({ brand }, queryStr);
+      allCompetitors.push(...results);
+    } catch (err) {
+      logger.error(`[Scraper] Error for query "${queryStr}": ${err.message}`);
+    }
+  }
+  
+  // 4. Save results
+  for (const comp of allCompetitors) {
+    await pool.request()
+      .input('org_id', sql.Int, orgId)
+      .input('product_id', sql.Int, productId)
+      .input('website_source', sql.VarChar(255), comp.website_source)
+      .input('url', sql.NVarChar(2000), comp.url)
+      .input('price', sql.Decimal(18,2), comp.price || null)
+      .input('description', sql.NVarChar(sql.MAX), comp.description || null)
+      .input('accuracy_score', sql.Int, comp.accuracy_score)
+      .input('search_query', sql.NVarChar(100), comp.search_query)
+      .query(`
+        INSERT INTO product_competitor_data
+        (org_id, product_id, website_source, url, price, description, accuracy_score, search_query)
+        VALUES
+        (@org_id, @product_id, @website_source, @url, @price, @description, @accuracy_score, @search_query)
+      `);
+  }
+  
+  // 5. Return updated list
+  const rows = await pool.request()
+    .input('org_id', sql.Int, orgId)
+    .input('product_id', sql.Int, productId)
+    .query(`
+      SELECT id, website_source, url, price, currency, description, accuracy_score, search_query, scraped_at
+      FROM product_competitor_data
+      WHERE org_id = @org_id AND product_id = @product_id
+      ORDER BY scraped_at DESC, accuracy_score DESC
+    `);
+
+  return res.json({ 
+    success: true, 
+    data: rows.recordset, 
+    message: `Refreshed market data. Ran ${queries.size} searches and found ${allCompetitors.length} total results.` 
+  });
 }));
 
 module.exports = router;
