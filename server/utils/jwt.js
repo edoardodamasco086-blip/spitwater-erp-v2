@@ -12,6 +12,7 @@ const jwt = require('jsonwebtoken');
 // ─────────────────────────────────────────────────────────────
 function signAccessToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_EXPIRES_IN || '8h',
     issuer:    'spitwater-erp',
     audience:  'erp-client',
@@ -24,6 +25,7 @@ function signAccessToken(payload) {
 // ─────────────────────────────────────────────────────────────
 function signRefreshToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
     issuer:    'spitwater-erp',
     audience:  'erp-refresh',
@@ -33,7 +35,8 @@ function signRefreshToken(payload) {
 // ── Verify any token ──────────────────────────────────────────
 function verifyToken(token, audience = 'erp-client') {
   return jwt.verify(token, process.env.JWT_SECRET, {
-    issuer:   'spitwater-erp',
+    algorithms: ['HS256'],
+    issuer:     'spitwater-erp',
     audience,
   });
 }

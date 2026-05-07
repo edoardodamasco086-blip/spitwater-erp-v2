@@ -23,6 +23,10 @@ import FieldValidationPage   from './pages/admin/FieldValidationPage';
 import CustomerTiersPage    from './pages/admin/CustomerTiersPage';
 import PriceListsPage       from './pages/admin/PriceListsPage';
 import ExchangeRatesPage    from './pages/admin/ExchangeRatesPage';
+import WarehousePage        from './pages/warehouse/WarehousePage';
+import StockReportsPage     from './pages/warehouse/StockReportsPage';
+import MovementsReportPage  from './pages/warehouse/MovementsReportPage';
+import InventoryLevelsPage  from './pages/warehouse/InventoryLevelsPage';
 
 // ── Route guards ───────────────────────────────────────────────
 function RequireAuth({ children }) {
@@ -77,6 +81,10 @@ export default function App() {
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
+        <Route path="warehouse"         element={<RequireAdmin><WarehousePage /></RequireAdmin>} />
+        <Route path="warehouse/reports" element={<RequireAdmin><StockReportsPage /></RequireAdmin>} />
+        <Route path="movements"         element={<MovementsReportPage />} />
+        <Route path="inventory"         element={<InventoryLevelsPage />} />
         <Route path="admin/products/categories"    element={<RequireAdmin><CategoryManager /></RequireAdmin>} />
         <Route path="admin/products/custom-fields" element={<RequireAdmin><CustomFieldManager /></RequireAdmin>} />
         <Route path="admin/products/uom"           element={<RequireAdmin><UomManager /></RequireAdmin>} />

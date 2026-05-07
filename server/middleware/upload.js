@@ -33,6 +33,8 @@ const IMAGE_TYPES = new Set([
   'image/webp', 'image/gif',
 ]);
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+
 const DOCUMENT_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -41,6 +43,11 @@ const DOCUMENT_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain',
   'image/jpeg', 'image/png', 'image/webp', // images can also be documents
+]);
+
+const DOCUMENT_EXTENSIONS = new Set([
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt',
+  '.jpg', '.jpeg', '.png', '.webp',
 ]);
 
 // ── Storage engine factory ────────────────────────────────────
@@ -69,11 +76,14 @@ const uploadProductImage = multer({
   storage: makeStorage('products/images'),
   limits:  { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter: (_req, file, cb) => {
-    if (IMAGE_TYPES.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid image type: ${file.mimetype}. Allowed: JPEG, PNG, WebP, GIF`));
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!IMAGE_TYPES.has(file.mimetype)) {
+      return cb(new Error(`Invalid image type: ${file.mimetype}. Allowed: JPEG, PNG, WebP, GIF`));
     }
+    if (!IMAGE_EXTENSIONS.has(ext)) {
+      return cb(new Error(`Invalid image extension: ${ext}. Allowed: .jpg, .jpeg, .png, .webp, .gif`));
+    }
+    cb(null, true);
   },
 }).single('image'); // field name in FormData
 
@@ -82,11 +92,14 @@ const uploadProductDocument = multer({
   storage: makeStorage('products/documents'),
   limits:  { fileSize: 50 * 1024 * 1024 }, // 50 MB
   fileFilter: (_req, file, cb) => {
-    if (DOCUMENT_TYPES.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid document type: ${file.mimetype}. Allowed: PDF, Word, Excel, images`));
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!DOCUMENT_TYPES.has(file.mimetype)) {
+      return cb(new Error(`Invalid document type: ${file.mimetype}. Allowed: PDF, Word, Excel, images`));
     }
+    if (!DOCUMENT_EXTENSIONS.has(ext)) {
+      return cb(new Error(`Invalid document extension: ${ext}`));
+    }
+    cb(null, true);
   },
 }).single('document');
 

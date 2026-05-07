@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { productUomApi } from '../../api/productUom';
 import { useAuth } from '../../context/AuthContext';
+import { getAccessToken } from '../../api/client';
 import styles from './CustomerTiersPage.module.css';
 
 const TIER_COLORS = ['#2F7FE8','#2ECC8A','#E89B2F','#9366E8','#E05252','#3BBCD4','#E84F8C','#9EA0A5'];
@@ -30,7 +31,7 @@ export default function CustomerTiersPage() {
   }
 
   async function loadContacts() {
-    const r = await fetch('/api/contacts?limit=500', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } });
+    const r = await fetch('/api/contacts?limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } });
     const d = await r.json();
     setContacts(d.data || []);
   }

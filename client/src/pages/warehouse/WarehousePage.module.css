@@ -1,0 +1,189 @@
+.page { padding: 32px; max-width: 1400px; }
+
+/* ── Header ─────────────────────────────────────────── */
+.header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+.title  { font-size: 22px; font-weight: 600; color: var(--text); }
+.sub    { font-size: 13.5px; color: var(--text-sub); margin-top: 4px; }
+.loading { display: flex; align-items: center; gap: 10px; color: var(--text-sub); font-size: 14px; padding: 20px 0; }
+
+/* ── Layout ──────────────────────────────────────────── */
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────── */
+.sidebar {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: sticky;
+  top: 20px;
+}
+.sidebarHead {
+  padding: 12px 16px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text-sub);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.emptyTree { padding: 20px 16px; font-size: 13px; color: var(--text-sub); }
+.emptyTree a { color: var(--accent); }
+
+/* Warehouse row */
+.whGroup { border-bottom: 1px solid var(--border); }
+.whGroup:last-child { border-bottom: none; }
+
+.whRow {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 11px 16px; background: none; border: none;
+  text-align: left; cursor: pointer; transition: background 0.12s;
+}
+.whRow:hover { background: var(--bg); }
+.whActive    { background: var(--accent-dim) !important; }
+
+.whCode {
+  font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500;
+  background: var(--accent-dim); color: var(--accent);
+  padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
+}
+.whName  { flex: 1; font-size: 13px; font-weight: 500; color: var(--text); }
+.whRow svg { flex-shrink: 0; color: var(--text-sub); }
+
+/* Zone list */
+.zoneList    { padding: 4px 0 8px; border-top: 1px solid var(--border); background: var(--bg); }
+.zoneLoading { padding: 10px 24px; display: flex; align-items: center; gap: 6px; }
+
+.zoneRow {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 20px; background: none; border: none;
+  text-align: left; cursor: pointer; transition: background 0.12s;
+}
+.zoneRow:hover { background: var(--border); }
+.zoneActive   { background: var(--accent-dim) !important; }
+.zoneInactive { opacity: 0.45; }
+
+.zoneDot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.zoneName { flex: 1; font-size: 13px; color: var(--text); }
+.zoneBinCount {
+  font-size: 11px; font-family: 'DM Mono', monospace;
+  background: rgba(90,114,146,0.12); color: var(--text-sub);
+  padding: 1px 7px; border-radius: 10px; min-width: 24px; text-align: center;
+}
+
+.addZoneBtn {
+  width: calc(100% - 24px); margin: 6px 12px 4px;
+  padding: 8px; border: 1.5px dashed var(--border-dark);
+  border-radius: var(--radius-sm); background: none;
+  font-size: 12.5px; color: var(--text-sub); cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.addZoneBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+/* ── Main area ───────────────────────────────────────── */
+.main {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 480px;
+}
+
+/* Empty states */
+.emptyMain {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 80px 20px; color: var(--text-sub);
+}
+.emptyMain svg { opacity: 0.25; }
+.emptyMain p   { font-size: 14px; text-align: center; max-width: 300px; }
+.emptyBins {
+  padding: 48px 24px; text-align: center;
+  font-size: 14px; color: var(--text-sub);
+}
+
+/* ── Zone form (main area) ───────────────────────────── */
+.formPanel { padding: 32px 36px; max-width: 680px; }
+
+.formPanelHead   { margin-bottom: 28px; }
+.formPanelTitle  { font-size: 18px; font-weight: 600; color: var(--text); }
+.formPanelSub    { font-size: 13.5px; color: var(--text-sub); margin-top: 5px; }
+
+.zoneFormGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.zoneFormGrid .form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.fieldHint { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+.formError {
+  background: var(--red-dim); border: 1px solid rgba(224,82,82,0.2);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 13px; color: var(--red); margin-bottom: 20px;
+}
+.formActions { grid-column: 1 / -1; display: flex; gap: 10px; justify-content: flex-end; padding-top: 8px; }
+
+/* ── Zone header (bins view) ─────────────────────────── */
+.binHeader {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 20px 24px; border-bottom: 1px solid var(--border); gap: 16px;
+}
+.binHeaderTitle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.binHeaderSub     { font-size: 12.5px; color: var(--text-sub); margin-top: 4px; }
+.binHeaderActions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.zoneTypePill {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px;
+  background: var(--accent-dim); color: var(--accent); font-weight: 500;
+}
+
+/* ── Bins table ──────────────────────────────────────── */
+.binTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.binTable th {
+  padding: 10px 16px; text-align: left;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--text-sub);
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.binTable td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.binTable tr:last-child td { border-bottom: none; }
+.binTable tr:hover td { background: var(--bg); }
+
+.binCode { font-family: 'DM Mono', monospace; font-size: 12.5px; font-weight: 500; color: var(--text); }
+.lockBadge { display: inline-flex; align-items: center; margin-left: 6px; color: var(--orange); vertical-align: middle; }
+.mono    { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text-sub); }
+.limits  { font-size: 12px; color: var(--text-sub); white-space: nowrap; }
+
+.inactiveRow td { opacity: 0.45; }
+.rowActions     { display: flex; gap: 6px; }
+
+/* ── Bin inline form ─────────────────────────────────── */
+.binForm {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.binFormGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* Add bin button */
+.addBinBtn {
+  width: calc(100% - 48px); margin: 14px 24px;
+  padding: 10px; border: 1.5px dashed var(--border-dark);
+  border-radius: var(--radius-sm); background: none;
+  font-size: 13px; color: var(--text-sub); cursor: pointer;
+  transition: all 0.15s; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.addBinBtn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }

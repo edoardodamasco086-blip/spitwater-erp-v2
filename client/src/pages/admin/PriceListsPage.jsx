@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { getAccessToken } from '../../api/client';
 import styles from './CustomerTiersPage.module.css'; // reuse same layout styles
 
 const API = (path, opts = {}) =>
   fetch(`/api/price-lists${path}`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
     ...opts,
   }).then(r => r.json());
 
@@ -41,7 +42,7 @@ export default function PriceListsPage() {
   }
 
   async function loadContacts() {
-    const r = await fetch('/api/contacts?limit=500', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } });
+    const r = await fetch('/api/contacts?limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } });
     const d = await r.json();
     setContacts(d.data || []);
   }

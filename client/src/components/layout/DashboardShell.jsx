@@ -162,11 +162,11 @@ export default function DashboardShell() {
           <div className={styles.navDivider} />
 
           <NavSection label="Operations" collapsed={collapsed}>
-            <NavItem to="/products"  icon={<ProductIcon />} label="Products"     collapsed={collapsed} />
-            <NavItem to="/inventory" icon={<BoxIcon />}      label="Inventory"    collapsed={collapsed} />
-            <NavItem to="/warehouse" icon={<WarehouseIcon />} label="Warehouse"   collapsed={collapsed} />
-            <NavItem to="/purchasing" icon={<CartIcon />}    label="Purchasing"   collapsed={collapsed} />
-            <NavItem to="/service"   icon={<WrenchIcon />}   label="Service Jobs" collapsed={collapsed} />
+            <NavItem to="/products"   icon={<ProductIcon />} label="Products"          collapsed={collapsed} />
+            <NavItem to="/inventory"  icon={<BoxIcon />}      label="Inventory"         collapsed={collapsed} />
+            <NavItem to="/movements"  icon={<HistoryIcon />}  label="Movement History"  collapsed={collapsed} />
+            <NavItem to="/purchasing" icon={<CartIcon />}     label="Purchasing"        collapsed={collapsed} />
+            <NavItem to="/service"    icon={<WrenchIcon />}   label="Service Jobs"      collapsed={collapsed} />
           </NavSection>
 
           <div className={styles.navDivider} />
@@ -198,6 +198,8 @@ export default function DashboardShell() {
                 <NavItem to="/admin/customer-tiers"        icon={<TierIcon />}       label="Customer Tiers"    collapsed={collapsed} />
                 <NavItem to="/admin/price-lists"           icon={<ListIcon />}       label="Price Lists"       collapsed={collapsed} />
                 <NavItem to="/admin/exchange-rates"        icon={<FxIcon />}         label="Exchange Rates"    collapsed={collapsed} />
+                <NavItem to="/warehouse"                   icon={<WarehouseIcon />}  label="Warehouses"        collapsed={collapsed} />
+                <NavItem to="/warehouse/reports"           icon={<ReportIcon />}     label="Stock Reports"     collapsed={collapsed} />
               </NavSection>
               <div className={styles.navDivider} />
               <NavSection label="Settings" collapsed={collapsed}>
@@ -307,7 +309,9 @@ function OrderIcon()     { return ic(<><rect x="1" y="3" width="15" height="13" 
 function InvoiceIcon()   { return ic(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></>); }
 function CreditIcon()    { return ic(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></>); }
 function BoxIcon()       { return ic(<><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>); }
+function HistoryIcon()   { return ic(<><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.51"/></>); }
 function WarehouseIcon() { return ic(<><path d="M1 22h22"/><rect x="3" y="10" width="18" height="12"/><path d="M3 10L12 3l9 7"/></>); }
+function ReportIcon()    { return ic(<><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>); }
 function CartIcon()      { return ic(<><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></>); }
 function WrenchIcon()    { return ic(<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>); }
 function BookIcon()      { return ic(<><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></>); }

@@ -3,8 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { productsApi } from '../../api/products';
 import { productUomApi, currencyApi } from '../../api/productUom';
 import { useFieldValidation } from '../../hooks/useFieldValidation';
-import RelationshipsTab from './RelationshipsTab';
-import AiMarketTab from './AiMarketTab';
+import { getAccessToken } from '../../api/client';
+import RelationshipsTab    from './RelationshipsTab';
+import AiMarketTab         from './AiMarketTab';
+import StockTab            from './StockTab';
+import ProductHistoryTab   from './ProductHistoryTab';
 import styles from './ProductDetailPage.module.css';
 
 const TABS = [
@@ -16,8 +19,9 @@ const TABS = [
   { key: 'documents',  label: 'Documents'      },
   { key: 'custom',     label: 'Custom Fields'  },
   { key: 'pricing',    label: 'Pricing'        },
-  { key: 'stock',      label: 'Stock'          },
+  { key: 'stock',         label: 'Stock'         },
   { key: 'relationships', label: 'Relationships' },
+  { key: 'history',       label: 'History'       },
 ];
 
 function formatCurrency(v) {
@@ -60,7 +64,6 @@ export default function ProductDetailPage() {
   const [customFields, setCustomFields] = useState([]);
   const [customValues, setCustomValues] = useState({});
   const [pricing,      setPricing]      = useState([]);
-  const [stock,        setStock]        = useState([]);
   const [loading,      setLoading]      = useState(!isNew);
   const [uomConversions, setUomConversions] = useState([]);
   const [supplierPrices, setSupplierPrices] = useState([]);
@@ -129,26 +132,25 @@ export default function ProductDetailPage() {
         ]);
       });
 
-    // Custom fields: initial load without scope (will be reloaded with category when tab is opened)
-    productsApi.customFields(null)
-      .then(({ data }) => {
-        setCustomFields(data.data || []);
-      })
-      .catch((err) => {
-        console.warn('Custom fields load failed:', err?.response?.data?.error || err.message);
-      });
-
-    if (!isNew) loadProduct();
+    if (isNew) {
+      // For new products load unscoped fields immediately; existing products reload with category scope inside loadProduct()
+      productsApi.customFields(null)
+        .then(({ data }) => setCustomFields(data.data || []))
+        .catch((err) => {
+          console.warn('Custom fields load failed:', err?.response?.data?.error || err.message);
+        });
+    } else {
+      loadProduct();
+    }
   }, [id]); // eslint-disable-line
 
   async function loadProduct() {
     setLoading(true);
     try {
-      const [prodRes, cvRes, pricingRes, stockRes, uomRes, suppRes, lockRes, suppliersRes] = await Promise.all([
+      const [prodRes, cvRes, pricingRes, uomRes, suppRes, lockRes, suppliersRes] = await Promise.all([
         productsApi.get(id),
         productsApi.getCustomValues(id),
         productsApi.getPricing(id),
-        productsApi.getStock(id),
         productUomApi.list(id).catch(() => ({ data: { data: [] } })),
         productUomApi.listSupplierPrices(id).catch(() => ({ data: { data: [] } })),
         productsApi.uomLockStatus(id).catch(() => ({ data: { data: { locked: false, reasons: [] } } })),
@@ -158,8 +160,7 @@ export default function ProductDetailPage() {
       const catScopeKey = p.category_id ? String(p.category_id) : null;
       setProduct(p);
       setPricing(pricingRes.data.data);
-      setStock(stockRes.data.data);
-      setCustomValues(cvRes.data.data || {});
+      setCustomValues(cvRes.data.data  || {});
       setUomConversions(uomRes.data.data || []);
       setSupplierPrices(suppRes.data.data || []);
       setUomLock(lockRes.data.data || { locked: false, reasons: [] });
@@ -860,50 +861,14 @@ export default function ProductDetailPage() {
         {/* ── STOCK TAB ── */}
         {!isNew && activeTab === 'stock' && (
           <div className={styles.tabContent}>
-            {stock.length === 0 ? (
-              <div className={styles.emptyTab}>No stock levels recorded yet. Stock is updated when goods receipts are posted.</div>
-            ) : (
-              <>
-                <div className="table-wrap" style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Warehouse</th>
-                        <th>On hand</th>
-                        <th>Reserved</th>
-                        <th>Available</th>
-                        <th>On order</th>
-                        <th>Last updated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stock.map(s => (
-                        <tr key={s.id}>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{s.warehouse_name}</div>
-                            <div style={{ fontSize: 11.5, fontFamily: 'DM Mono', color: 'var(--text-sub)' }}>{s.warehouse_code}</div>
-                          </td>
-                          <td style={{ fontFamily: 'DM Mono', fontWeight: 600 }}>{formatQty(s.qty_on_hand)}</td>
-                          <td style={{ fontFamily: 'DM Mono', color: 'var(--orange)' }}>{formatQty(s.qty_reserved)}</td>
-                          <td style={{ fontFamily: 'DM Mono', color: s.qty_available > 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-                            {formatQty(s.qty_available)}
-                          </td>
-                          <td style={{ fontFamily: 'DM Mono', color: 'var(--accent)' }}>{formatQty(s.qty_on_order)}</td>
-                          <td style={{ fontSize: 12, color: 'var(--text-sub)' }}>
-                            {new Date(s.updated_at).toLocaleDateString('en-AU')}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, fontSize: 13, color: 'var(--text-sub)' }}>
-                  Total on hand: <strong>{formatQty(stock.reduce((s, r) => s + (r.qty_on_hand || 0), 0))}</strong>
-                  {' · '}
-                  Total available: <strong>{formatQty(stock.reduce((s, r) => s + (r.qty_available || 0), 0))}</strong>
-                </div>
-              </>
-            )}
+            <StockTab productId={id} product={product} />
+          </div>
+        )}
+
+        {/* ── HISTORY TAB ── */}
+        {!isNew && activeTab === 'history' && (
+          <div className={styles.tabContent}>
+            <ProductHistoryTab productId={id} />
           </div>
         )}
         {/* ── SUPPLIERS TAB ── */}
@@ -983,7 +948,7 @@ function SuppliersTab({ productId, productSuppliers, onReload }) {
   const [newRow,   setNewRow]   = useState({ contact_id: '', supplier_part_number: '', lead_time_days: '', min_order_qty: '', order_multiple: '', notes: '' });
 
   useEffect(() => {
-    fetch('/api/contacts?type=supplier&limit=500', { headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` } })
+    fetch('/api/contacts?type=supplier&limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } })
       .then(r => r.json()).then(d => setAllSuppliers(d.data || [])).catch(() => {});
   }, []);
 

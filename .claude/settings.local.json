@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs wc -l)",
+      "Bash(grep -rn \"\\\\.query.*\\\\${\" /c/Projects/spitwater-erp-v2/server/routes/)"
+    ]
+  }
+}

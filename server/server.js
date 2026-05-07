@@ -5,12 +5,13 @@
 
 require('dotenv').config();
 
-const express    = require('express');
-const cors       = require('cors');
-const helmet     = require('helmet');
-const compression = require('compression');
-const rateLimit  = require('express-rate-limit');
-const path       = require('path');
+const express      = require('express');
+const cors         = require('cors');
+const helmet       = require('helmet');
+const compression  = require('compression');
+const rateLimit    = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
+const path         = require('path');
 
 const logger                            = require('./config/logger');
 const { poolConnect }                   = require('./config/db');
@@ -35,6 +36,7 @@ const productSuppliersRoutes = require('./routes/product-suppliers');
 const productAssociationTypesRoutes = require('./routes/product-association-types');
 const productAssociationsRoutes = require('./routes/product-associations');
 const customFieldsRoutes    = require('./routes/custom-fields');
+const warehouseRoutes       = require('./routes/warehouse');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -54,7 +56,7 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (Postman, mobile apps, curl)
     if (!origin) return callback(null, true);
-    if (corsOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+    if (corsOrigins.includes(origin)) {
       return callback(null, true);
     }
     callback(new Error(`CORS: origin ${origin} not allowed`));
@@ -63,6 +65,9 @@ app.use(cors({
   allowedHeaders:   ['Content-Type', 'Authorization'],
   methods:          ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
+
+// ── Cookie parsing ────────────────────────────────────────────
+app.use(cookieParser());
 
 // ── Body parsing ──────────────────────────────────────────────
 app.use(express.json({ limit: '5mb' }));
@@ -122,6 +127,7 @@ app.use('/api/products',          productSuppliersRoutes);
 app.use('/api/product-association-types', productAssociationTypesRoutes);
 app.use('/api/products/:id',      productAssociationsRoutes);
 app.use('/api/custom-fields',     customFieldsRoutes);
+app.use('/api/warehouse',         warehouseRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

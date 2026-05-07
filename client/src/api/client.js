@@ -1,8 +1,9 @@
 // ============================================================
 // src/api/client.js
 // Central Axios instance. Handles:
-//   - Attaching the Bearer token to every request
+//   - Attaching the Bearer token to every request (from memory, not localStorage)
 //   - Silently refreshing the access token when it expires (401)
+//     The refresh token lives in an HttpOnly cookie — never touched by JS
 //   - Logging out when refresh also fails
 // ============================================================
 
@@ -10,18 +11,26 @@ import axios from 'axios';
 
 const BASE_URL = '/api'; // Vite proxies this to http://localhost:3000
 
+// ── In-memory access token ────────────────────────────────────
+// Never written to localStorage — survives the tab session only.
+// The HttpOnly refresh cookie lets us restore the session on reload.
+let _accessToken = null;
+export function setAccessToken(token)  { _accessToken = token; }
+export function clearAccessToken()     { _accessToken = null; }
+export function getAccessToken()       { return _accessToken; }
+
 const client = axios.create({
-  baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
+  baseURL:         BASE_URL,
+  headers:         { 'Content-Type': 'application/json' },
+  timeout:         15000,
+  withCredentials: true, // Send HttpOnly cookies on every request
 });
 
 // ── Request interceptor — attach access token ─────────────────
 client.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (_accessToken) {
+      config.headers.Authorization = `Bearer ${_accessToken}`;
     }
     return config;
   },
@@ -30,7 +39,7 @@ client.interceptors.request.use(
 
 // ── Response interceptor — silent token refresh on 401 ────────
 let isRefreshing = false;
-let failedQueue  = [];  // requests that arrived while refresh was in progress
+let failedQueue  = [];
 
 function processQueue(error, token = null) {
   failedQueue.forEach(({ resolve, reject }) => {
@@ -45,8 +54,6 @@ client.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Only handle 401 errors that haven't been retried yet
-    // Skip the refresh endpoint itself to avoid infinite loop
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
@@ -54,7 +61,6 @@ client.interceptors.response.use(
       !originalRequest.url.includes('/auth/login')
     ) {
       if (isRefreshing) {
-        // Queue this request until the refresh completes
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then((token) => {
@@ -66,21 +72,18 @@ client.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
-
-      if (!refreshToken) {
-        // No refresh token — force logout
-        forceLogout();
-        return Promise.reject(error);
-      }
-
       try {
-        const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+        // No body needed — refresh token is read from the HttpOnly cookie automatically
+        const { data } = await axios.post(
+          `${BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
         const newToken = data.data.accessToken;
 
-        localStorage.setItem('accessToken', newToken);
-        client.defaults.headers.Authorization = `Bearer ${newToken}`;
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        setAccessToken(newToken);
+        client.defaults.headers.Authorization  = `Bearer ${newToken}`;
+        originalRequest.headers.Authorization  = `Bearer ${newToken}`;
 
         processQueue(null, newToken);
         return client(originalRequest);
@@ -98,10 +101,7 @@ client.interceptors.response.use(
 );
 
 function forceLogout() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('user');
-  // Navigate to login — can't use React Router here so use window
+  clearAccessToken();
   if (!window.location.pathname.includes('/login')) {
     window.location.href = '/login';
   }

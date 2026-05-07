@@ -35,6 +35,9 @@ export const productsApi = {
   getStock:       (id) => client.get(`/products/${id}/stock`),
   uomLockStatus:  (id) => client.get(`/products/${id}/uom-lock-status`),
 
+  // History / audit trail
+  getHistory: (id, params) => client.get(`/products/${id}/history`, { params }),
+
   // Market Data (AI Tab)
   getMarketData:     (id) => client.get(`/products/${id}/market-data`),
   refreshMarketData: (id) => client.post(`/products/${id}/market-data/refresh`),

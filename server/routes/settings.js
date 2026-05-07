@@ -15,6 +15,7 @@
 // GET    /api/settings/warehouses       — list warehouses
 // POST   /api/settings/warehouses       — create warehouse
 // PATCH  /api/settings/warehouses/:id   — update warehouse
+// GET    /api/settings/chart-of-accounts?type= — COA list for dropdowns
 // GET    /api/settings/audit            — audit log (paginated)
 // GET    /api/settings/org-stats        — counts for settings dashboard
 // ============================================================
@@ -272,6 +273,7 @@ router.patch('/smtp/:id', requirePermission('settings', 'update'), asyncHandler(
     .input('max_per_hour',    sql.Int,           max_per_hour    || null)
     .input('max_per_day',     sql.Int,           max_per_day     || null)
     .input('is_active',       sql.Bit,           is_active != null ? (is_active ? 1 : 0) : null)
+    .input('updated_by',      sql.Int,           req.user.userId)
     .query(`
       UPDATE smtp_configurations SET
         profile_name    = COALESCE(@profile_name,    profile_name),
@@ -288,7 +290,7 @@ router.patch('/smtp/:id', requirePermission('settings', 'update'), asyncHandler(
         max_per_day     = COALESCE(@max_per_day,     max_per_day),
         is_active       = COALESCE(@is_active,       is_active),
         updated_at      = GETDATE(),
-        updated_by      = ${req.user.userId}
+        updated_by      = @updated_by
       WHERE id = @id AND org_id = @org_id
     `);
 
@@ -480,13 +482,17 @@ router.get('/warehouses', asyncHandler(async (req, res) => {
       SELECT w.id, w.code, w.name, w.warehouse_type,
              w.address_line1, w.suburb, w.state, w.postcode,
              w.dealer_visible, w.dealer_buffer_qty,
+             w.inventory_account_id, w.use_separate_account,
              w.is_active, w.is_void, w.created_at,
              u.full_name AS manager_name,
+             coa.account_code AS inventory_account_code,
+             coa.account_name AS inventory_account_name,
              (SELECT COUNT(*) FROM warehouse_bins wb
               INNER JOIN warehouse_zones wz ON wz.id = wb.zone_id
               WHERE wz.warehouse_id = w.id AND wb.is_active = 1) AS bin_count
       FROM warehouses w
-      LEFT JOIN users u ON u.id = w.manager_user_id
+      LEFT JOIN users u             ON u.id   = w.manager_user_id
+      LEFT JOIN chart_of_accounts coa ON coa.id = w.inventory_account_id
       WHERE w.org_id = @org_id AND w.is_void = 0
       ORDER BY w.name ASC
     `);
@@ -500,29 +506,38 @@ router.get('/warehouses', asyncHandler(async (req, res) => {
 router.post('/warehouses', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
 
-  const { code, name, warehouse_type = 'main', address_line1, suburb, state, postcode, dealer_visible = false, dealer_buffer_qty = 0 } = req.body;
+  const {
+    code, name, warehouse_type = 'main',
+    address_line1, suburb, state, postcode,
+    dealer_visible = false, dealer_buffer_qty = 0,
+    inventory_account_id, use_separate_account = false,
+  } = req.body;
 
   if (!code || !name) return res.status(400).json({ success: false, error: 'code and name are required.' });
 
   const result = await pool.request()
-    .input('org_id',             sql.Int,          req.user.orgId)
-    .input('code',               sql.VarChar(20),   code.toUpperCase().trim())
-    .input('name',               sql.NVarChar(100), name.trim())
-    .input('warehouse_type',     sql.VarChar(20),   warehouse_type)
-    .input('address_line1',      sql.NVarChar(200), address_line1 || null)
-    .input('suburb',             sql.NVarChar(100), suburb        || null)
-    .input('state',              sql.VarChar(10),   state         || null)
-    .input('postcode',           sql.VarChar(10),   postcode      || null)
-    .input('dealer_visible',     sql.Bit,           dealer_visible ? 1 : 0)
-    .input('dealer_buffer_qty',  sql.Int,           dealer_buffer_qty)
+    .input('org_id',                sql.Int,          req.user.orgId)
+    .input('code',                  sql.VarChar(20),   code.toUpperCase().trim())
+    .input('name',                  sql.NVarChar(100), name.trim())
+    .input('warehouse_type',        sql.VarChar(20),   warehouse_type)
+    .input('address_line1',         sql.NVarChar(200), address_line1         || null)
+    .input('suburb',                sql.NVarChar(100), suburb                || null)
+    .input('state',                 sql.VarChar(10),   state                 || null)
+    .input('postcode',              sql.VarChar(10),   postcode              || null)
+    .input('dealer_visible',        sql.Bit,           dealer_visible ? 1 : 0)
+    .input('dealer_buffer_qty',     sql.Int,           dealer_buffer_qty)
+    .input('inventory_account_id',  sql.Int,           inventory_account_id  || null)
+    .input('use_separate_account',  sql.Bit,           use_separate_account ? 1 : 0)
     .query(`
       INSERT INTO warehouses
         (org_id, code, name, warehouse_type, address_line1, suburb, state, postcode,
-         dealer_visible, dealer_buffer_qty, is_active, is_void, created_at)
+         dealer_visible, dealer_buffer_qty, inventory_account_id, use_separate_account,
+         is_active, is_void, created_at)
       OUTPUT INSERTED.id
       VALUES
         (@org_id, @code, @name, @warehouse_type, @address_line1, @suburb, @state, @postcode,
-         @dealer_visible, @dealer_buffer_qty, 1, 0, GETDATE())
+         @dealer_visible, @dealer_buffer_qty, @inventory_account_id, @use_separate_account,
+         1, 0, GETDATE())
     `);
 
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id }, message: `Warehouse "${name}" created.` });
@@ -533,33 +548,63 @@ router.post('/warehouses', requirePermission('settings', 'update'), asyncHandler
 // ────────────────────────────────────────────────────────────────
 router.patch('/warehouses/:id', requirePermission('settings', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
-  const { name, address_line1, suburb, state, postcode, dealer_visible, dealer_buffer_qty, is_active } = req.body;
+  const {
+    name, address_line1, suburb, state, postcode,
+    dealer_visible, dealer_buffer_qty, is_active,
+    inventory_account_id, use_separate_account,
+  } = req.body;
 
   await pool.request()
-    .input('id',                 sql.Int,           parseInt(req.params.id))
-    .input('org_id',             sql.Int,           req.user.orgId)
-    .input('name',               sql.NVarChar(100), name              || null)
-    .input('address_line1',      sql.NVarChar(200), address_line1     || null)
-    .input('suburb',             sql.NVarChar(100), suburb            || null)
-    .input('state',              sql.VarChar(10),   state             || null)
-    .input('postcode',           sql.VarChar(10),   postcode          || null)
-    .input('dealer_visible',     sql.Bit,           dealer_visible    != null ? (dealer_visible ? 1 : 0) : null)
-    .input('dealer_buffer_qty',  sql.Int,           dealer_buffer_qty != null ? dealer_buffer_qty : null)
-    .input('is_active',          sql.Bit,           is_active         != null ? (is_active ? 1 : 0) : null)
+    .input('id',                   sql.Int,           parseInt(req.params.id))
+    .input('org_id',               sql.Int,           req.user.orgId)
+    .input('name',                 sql.NVarChar(100), name                !== undefined ? name              : null)
+    .input('address_line1',        sql.NVarChar(200), address_line1       !== undefined ? address_line1     : null)
+    .input('suburb',               sql.NVarChar(100), suburb              !== undefined ? suburb            : null)
+    .input('state',                sql.VarChar(10),   state               !== undefined ? state             : null)
+    .input('postcode',             sql.VarChar(10),   postcode            !== undefined ? postcode          : null)
+    .input('dealer_visible',       sql.Bit,           dealer_visible      != null ? (dealer_visible ? 1 : 0)     : null)
+    .input('dealer_buffer_qty',    sql.Int,           dealer_buffer_qty   != null ? dealer_buffer_qty              : null)
+    .input('is_active',            sql.Bit,           is_active           != null ? (is_active ? 1 : 0)          : null)
+    .input('inventory_account_id', sql.Int,           inventory_account_id != null ? parseInt(inventory_account_id) : null)
+    .input('use_separate_account', sql.Bit,           use_separate_account != null ? (use_separate_account ? 1 : 0) : null)
     .query(`
       UPDATE warehouses SET
-        name              = COALESCE(@name,             name),
-        address_line1     = COALESCE(@address_line1,    address_line1),
-        suburb            = COALESCE(@suburb,           suburb),
-        state             = COALESCE(@state,            state),
-        postcode          = COALESCE(@postcode,         postcode),
-        dealer_visible    = COALESCE(@dealer_visible,   dealer_visible),
-        dealer_buffer_qty = COALESCE(@dealer_buffer_qty,dealer_buffer_qty),
-        is_active         = COALESCE(@is_active,        is_active)
+        name                  = COALESCE(@name,                  name),
+        address_line1         = COALESCE(@address_line1,         address_line1),
+        suburb                = COALESCE(@suburb,                suburb),
+        state                 = COALESCE(@state,                 state),
+        postcode              = COALESCE(@postcode,              postcode),
+        dealer_visible        = COALESCE(@dealer_visible,        dealer_visible),
+        dealer_buffer_qty     = COALESCE(@dealer_buffer_qty,     dealer_buffer_qty),
+        is_active             = COALESCE(@is_active,             is_active),
+        inventory_account_id  = COALESCE(@inventory_account_id,  inventory_account_id),
+        use_separate_account  = COALESCE(@use_separate_account,  use_separate_account)
       WHERE id = @id AND org_id = @org_id
     `);
 
   return res.json({ success: true, message: 'Warehouse updated.' });
+}));
+
+// ────────────────────────────────────────────────────────────────
+// GET /api/settings/chart-of-accounts?type=asset
+// Returns COA accounts for use in dropdowns (e.g. warehouse inventory account)
+// ────────────────────────────────────────────────────────────────
+router.get('/chart-of-accounts', asyncHandler(async (req, res) => {
+  await poolConnect;
+  const type = req.query.type || null;
+
+  const request = pool.request().input('org_id', sql.Int, req.user.orgId);
+  let filter = 'org_id = @org_id AND is_active = 1';
+  if (type) { request.input('type', sql.VarChar(30), type); filter += ' AND account_type = @type'; }
+
+  const rows = await request.query(`
+    SELECT id, account_code, account_name, account_type, account_subtype, normal_balance
+    FROM chart_of_accounts
+    WHERE ${filter}
+    ORDER BY account_code ASC
+  `);
+
+  return res.json({ success: true, data: rows.recordset });
 }));
 
 // ────────────────────────────────────────────────────────────────

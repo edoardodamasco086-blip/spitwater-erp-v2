@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { invalidateValidationCache } from '../../hooks/useFieldValidation';
+import { getAccessToken } from '../../api/client';
 import styles from './FieldValidationPage.module.css';
 
 const API = (path, opts = {}) =>
   fetch(`/api/field-validation${path}`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
     ...opts,
   }).then(r => r.json());
 

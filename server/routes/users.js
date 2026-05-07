@@ -21,6 +21,7 @@ const { requireAuth, requireRole }     = require('../middleware/auth');
 const { requirePermission }            = require('../middleware/permissions');
 const { asyncHandler }                 = require('../middleware/errorHandler');
 const { hashPassword }                 = require('../utils/password');
+const { sendInviteEmail }              = require('../services/emailService');
 const logger                           = require('../config/logger');
 
 // All user routes require authentication
@@ -133,21 +134,40 @@ router.post('/invite', requirePermission('users', 'write'), asyncHandler(async (
       VALUES (@org_id, @email, @role, @token, @invited_by, @expires_at, GETDATE())
     `);
 
-  // TODO: Send email with invite link
-  // The invite link is: http://localhost:5173/accept-invite?token=<token>
-  const inviteLink = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}/accept-invite?token=${token}`;
+  // Build the invite link from the first CORS origin (or APP_URL if set)
+  const appBase    = process.env.APP_URL || process.env.CORS_ORIGIN?.split(',')[0].trim() || 'http://localhost:5173';
+  const inviteLink = `${appBase}/accept-invite?token=${token}`;
 
   logger.info(`Invite created for [${email}] role=${role} by [${req.user.email}]`);
 
+  // Fetch org name for the email (fire-and-forget the whole thing)
+  pool.request()
+    .input('org_id', sql.Int, req.user.orgId)
+    .query('SELECT name FROM organisations WHERE id = @org_id')
+    .then(({ recordset }) => {
+      const orgName = recordset[0]?.name || 'your organisation';
+      return sendInviteEmail({
+        orgId:         req.user.orgId,
+        orgName,
+        toEmail:       email,
+        role,
+        inviteLink,
+        invitedByName: req.user.name,
+      });
+    })
+    .catch(err => logger.error(`Invite email failed for ${email}: ${err.message}`));
+
+  const isDev = process.env.NODE_ENV !== 'production';
   return res.status(201).json({
     success: true,
     data: {
       email,
       role,
-      token,
-      inviteLink,  // In production, email this — don't return it in the API
       expiresAt,
-      message: 'Invite created. In development, use the inviteLink directly. In production this will be emailed.'
+      ...(isDev && { inviteLink }),
+      message: isDev
+        ? 'Invite created. Email sent if SMTP is configured; use inviteLink directly if not.'
+        : 'Invite created. The user will receive an email with the invite link.',
     }
   });
 }));
@@ -174,6 +194,7 @@ router.patch('/:id', requirePermission('users', 'update'), asyncHandler(async (r
 
   await pool.request()
     .input('id',        sql.Int,          userId)
+    .input('org_id',    sql.Int,          req.user.orgId)
     .input('full_name', sql.NVarChar(200), full_name)
     .input('phone',     sql.VarChar(30),   phone || null)
     .query(`
@@ -182,6 +203,7 @@ router.patch('/:id', requirePermission('users', 'update'), asyncHandler(async (r
           phone      = @phone,
           updated_at = GETDATE()
       WHERE id = @id
+        AND id IN (SELECT user_id FROM org_members WHERE org_id = @org_id)
     `);
 
   return res.json({ success: true, message: 'User updated.' });
@@ -234,8 +256,13 @@ router.patch('/:id/deactivate', requirePermission('users', 'update'), asyncHandl
   await poolConnect;
 
   await pool.request()
-    .input('id', sql.Int, userId)
-    .query(`UPDATE users SET is_active = 0, updated_at = GETDATE() WHERE id = @id`);
+    .input('id',     sql.Int, userId)
+    .input('org_id', sql.Int, req.user.orgId)
+    .query(`
+      UPDATE users SET is_active = 0, updated_at = GETDATE()
+      WHERE id = @id
+        AND id IN (SELECT user_id FROM org_members WHERE org_id = @org_id)
+    `);
 
   // Also revoke all refresh tokens
   await pool.request()

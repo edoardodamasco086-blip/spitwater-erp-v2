@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { inviteApi } from '../../api/settings';
 import { useAuth } from '../../context/AuthContext';
+import { setAccessToken } from '../../api/client';
 import styles from './AcceptInvitePage.module.css';
 
 export default function AcceptInvitePage() {
@@ -41,10 +42,9 @@ export default function AcceptInvitePage() {
     setSaving(true);
     try {
       const { data } = await inviteApi.accept({ token, full_name: fullName.trim(), password });
-      // Store tokens directly (bypass login() which calls /api/auth/login)
-      localStorage.setItem('accessToken',  data.data.accessToken);
-      localStorage.setItem('refreshToken', data.data.refreshToken);
-      localStorage.setItem('user',         JSON.stringify(data.data.user));
+      // Refresh token is now in an HttpOnly cookie set by the server.
+      // Store access token in memory and record user state.
+      setAccessToken(data.data.accessToken);
       setStatus('done');
       setTimeout(() => navigate('/', { replace: true }), 2000);
     } catch (err) {

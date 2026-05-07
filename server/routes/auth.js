@@ -23,12 +23,59 @@ const logger                           = require('../config/logger');
 
 // ── Rate limit login attempts ─────────────────────────────────
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max:      10,              // 10 attempts per window per IP
+  windowMs: 15 * 60 * 1000,
+  max:      10,
   message:  { success: false, error: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders:   false,
 });
+
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max:      30,
+  message:  { success: false, error: 'Too many refresh attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders:   false,
+});
+
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max:      10,
+  message:  { success: false, error: 'Too many password change attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders:   false,
+});
+
+// ── CSRF origin check ─────────────────────────────────────────
+// Applied to endpoints that authenticate via the HttpOnly refresh cookie
+// (i.e. no Bearer token to protect them from cross-site forgery).
+// Verifies the request Origin/Referer matches an allowed origin.
+// SameSite=lax already blocks cross-site POST in modern browsers;
+// this is server-side defense-in-depth for older browsers / edge cases.
+function requireSameOrigin(req, res, next) {
+  const allowedOrigins = new Set(
+    (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map(s => s.trim())
+  );
+
+  const origin   = req.headers['origin'];
+  const referer  = req.headers['referer'];
+
+  // Requests with no Origin and no Referer are likely from same-origin
+  // (e.g. server-to-server, curl in dev). Allow them through.
+  if (!origin && !referer) return next();
+
+  const candidate = origin || (referer ? new URL(referer).origin : null);
+
+  if (candidate && allowedOrigins.has(candidate)) return next();
+
+  return res.status(403).json({
+    success: false,
+    error:   'CSRF check failed: request origin not allowed.',
+    code:    'CSRF_REJECTED',
+  });
+}
 
 // ── Helper: get client IP ──────────────────────────────────────
 function getIP(req) {
@@ -38,6 +85,26 @@ function getIP(req) {
 // ── Helper: hash token for DB storage (never store raw tokens) ─
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// ── Helper: set the refresh token as an HttpOnly cookie ────────
+function setRefreshCookie(res, token) {
+  res.cookie('refreshToken', token, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
+    path:     '/',
+  });
+}
+
+function clearRefreshCookie(res) {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path:     '/',
+  });
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -200,12 +267,13 @@ router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
 
   logger.info(`Login: success for [${email}] org=${user.org_id} role=${user.role}`);
 
-  // ── 10. Return tokens + safe user object ───────────────────
+  // ── 10. Return access token + user; refresh token goes in HttpOnly cookie ──
+  setRefreshCookie(res, refreshToken);
+
   return res.json({
     success: true,
     data: {
       accessToken,
-      refreshToken,
       user: {
         id:       user.id,
         email:    user.email,
@@ -223,11 +291,11 @@ router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
 // Body: { refreshToken }
 // Returns: { accessToken }
 // ────────────────────────────────────────────────────────────────
-router.post('/refresh', asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+router.post('/refresh', refreshLimiter, requireSameOrigin, asyncHandler(async (req, res) => {
+  const refreshToken = req.cookies?.refreshToken;
 
   if (!refreshToken) {
-    return res.status(400).json({ success: false, error: 'Refresh token required.' });
+    return res.status(401).json({ success: false, error: 'No refresh token.', code: 'REFRESH_MISSING' });
   }
 
   // ── Verify token signature & expiry ────────────────────────
@@ -254,18 +322,6 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, error: 'Refresh token has been revoked.', code: 'REFRESH_REVOKED' });
   }
 
-  // ── Fetch current user + role (may have changed since last login) ──
-  const users = await pool.request()
-    .input('user_id', sql.Int, decoded.userId)
-    .query(`
-      SELECT u.id, u.email, u.full_name, u.is_active,
-             om.org_id, om.role
-      FROM users u
-      LEFT JOIN org_members om ON om.user_id = u.id AND om.org_id = @user_id
-      WHERE u.id = @user_id AND u.is_active = 1
-    `);
-
-  // Better: get user+org separately
   const userRow = await pool.request()
     .input('user_id', sql.Int, decoded.userId)
     .input('org_id',  sql.Int, decoded.orgId)
@@ -291,6 +347,9 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     name:   user.full_name,
   });
 
+  // Reset cookie expiry on each successful refresh (sliding window)
+  setRefreshCookie(res, refreshToken);
+
   return res.json({ success: true, data: { accessToken: newAccessToken } });
 }));
 
@@ -300,10 +359,11 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 // Body: { refreshToken }
 // ────────────────────────────────────────────────────────────────
 router.post('/logout', requireAuth, asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const refreshToken = req.cookies?.refreshToken;
+
+  await poolConnect;
 
   if (refreshToken) {
-    await poolConnect;
     const tokenHash = hashToken(refreshToken);
     await pool.request()
       .input('token_hash', sql.VarChar(100), tokenHash)
@@ -314,6 +374,8 @@ router.post('/logout', requireAuth, asyncHandler(async (req, res) => {
         WHERE token_hash = @token_hash
       `);
   }
+
+  clearRefreshCookie(res);
 
   // Audit log
   await pool.request()
@@ -398,7 +460,7 @@ router.get('/me', requireAuth, asyncHandler(async (req, res) => {
 // POST /api/auth/change-password
 // Body: { currentPassword, newPassword }
 // ────────────────────────────────────────────────────────────────
-router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
+router.post('/change-password', requireAuth, changePasswordLimiter, asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   if (!currentPassword || !newPassword) {

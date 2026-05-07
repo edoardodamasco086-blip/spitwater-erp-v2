@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { getAccessToken } from '../../api/client';
 
 const API = (path, opts = {}) =>
   fetch(`/api/currency${path}`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
     ...opts,
   }).then(r => r.json());
 

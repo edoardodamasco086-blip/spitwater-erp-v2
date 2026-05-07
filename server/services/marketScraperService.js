@@ -9,33 +9,47 @@ function calculateAccuracy(query, title) {
   if (!title || !query) return 0;
   const t = title.toLowerCase();
   const q = query.toLowerCase();
-  
-  // Exact match for the part number/SKU
+
+  // Exact substring match (great for part numbers)
   if (t.includes(q)) return 100;
-  
-  // High confidence if it contains the part number with different separators
+
+  // Normalized exact match (handles separators like dashes)
   const normalizedQ = q.replace(/[^a-z0-9]/g, '');
   const normalizedT = t.replace(/[^a-z0-9]/g, '');
   if (normalizedT.includes(normalizedQ)) return 95;
 
-  // Fuzzy match: if most of the query is found
-  if (q.length > 5) {
+  // Prefix match (useful for part numbers with suffixes)
+  if (q.length > 5 && !q.includes(' ')) {
     const part = q.substring(0, 6);
     if (t.includes(part)) return 80;
   }
-  
-  return 30; // Low score for generic matches
+
+  // Word-overlap scoring (for product name queries)
+  const queryWords = q.split(/\s+/).filter(w => w.length > 2);
+  if (queryWords.length >= 2) {
+    const matched = queryWords.filter(w => t.includes(w)).length;
+    const ratio   = matched / queryWords.length;
+    if (ratio >= 0.6) return Math.round(60 + ratio * 40); // 84–100
+    if (ratio >= 0.4) return 70;
+  }
+
+  return 30;
 }
 
 async function scrapeMarketDataForProduct(product, query) {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) return [];
 
-  logger.info(`[Scraper] Searching for EXACT query: "${query}"`);
+  // Part-number queries (no spaces) trust the search engine's own relevance —
+  // don't re-filter by title matching since the code won't appear in the title.
+  const isPartNumber = !query.includes(' ');
+  const minAccuracy  = isPartNumber ? 0 : 70;
+
+  logger.info(`[Scraper] Searching for ${isPartNumber ? 'part number' : 'name'} query: "${query}"`);
 
   try {
     const results = [];
-    
+
     // 1. Google Shopping
     const response = await axios.get('https://serpapi.com/search', {
       params: {
@@ -47,8 +61,8 @@ async function scrapeMarketDataForProduct(product, query) {
     });
 
     (response.data.shopping_results || []).slice(0, 10).forEach(res => {
-      const accuracy = calculateAccuracy(query, res.title);
-      if (accuracy >= 70) {
+      const accuracy = isPartNumber ? 85 : calculateAccuracy(query, res.title);
+      if (accuracy >= minAccuracy) {
         results.push({
           website_source: res.source || extractDomain(res.link),
           url: res.link,
@@ -69,10 +83,10 @@ async function scrapeMarketDataForProduct(product, query) {
         hl: 'en', gl: 'au', location: 'Australia', api_key: apiKey, num: 20
       }
     });
-    
+
     (organicResponse.data.organic_results || []).forEach(res => {
-      const accuracy = calculateAccuracy(query, res.title);
-      if (accuracy >= 70 && !results.find(r => r.url === res.link)) {
+      const accuracy = isPartNumber ? 80 : calculateAccuracy(query, res.title);
+      if (accuracy >= minAccuracy && !results.find(r => r.url === res.link)) {
         results.push({
           website_source: extractDomain(res.link),
           url: res.link,
@@ -94,10 +108,10 @@ async function scrapeMarketDataForProduct(product, query) {
           api_key: apiKey
         }
       });
-      
+
       (ebayResponse.data.search_results || []).slice(0, 5).forEach(res => {
-        const accuracy = calculateAccuracy(query, res.title);
-        if (accuracy >= 70) {
+        const accuracy = isPartNumber ? 80 : calculateAccuracy(query, res.title);
+        if (accuracy >= minAccuracy) {
           results.push({
             website_source: 'ebay.com.au',
             url: res.link,

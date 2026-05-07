@@ -116,6 +116,7 @@ router.get('/:id', requirePermission('contacts','read'), asyncHandler(async (req
   await poolConnect;
   const orgId = req.user.orgId;
   const id    = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid contact ID.' });
 
   const [contactResult, addressResult] = await Promise.all([
     pool.request()

@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { getAccessToken } from '../../../api/client';
 import styles from './Section.module.css';
 
 const API = (path, opts = {}) =>
   fetch(`/api/numbering${path}`, {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
     ...opts,
   }).then(r => r.json());
 

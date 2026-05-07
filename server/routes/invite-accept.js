@@ -179,12 +179,20 @@ router.post('/accept', asyncHandler(async (req, res) => {
       VALUES (@user_id, @org_id, @token_hash, @expires_at, GETDATE())
     `);
 
+  // Refresh token goes in HttpOnly cookie (same policy as /api/auth/login)
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    path:     '/',
+  });
+
   return res.json({
     success: true,
     message: 'Account created successfully.',
     data: {
       accessToken,
-      refreshToken,
       user: { id: userId, email: invite.email, name: full_name.trim(), role: invite.role, orgId: invite.org_id, orgName: invite.org_name },
     },
   });

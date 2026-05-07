@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { validateForm, transformForm, validateFieldLive } from '../utils/validator';
+import { getAccessToken } from '../api/client';
 
 const cache = {};
 
@@ -25,9 +26,8 @@ export function useFieldValidation(entityKey, context = {}) {
       return;
     }
 
-    const token = localStorage.getItem('accessToken');
     fetch(`/api/field-validation/${entityKey}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
     })
       .then(r => r.json())
       .then(res => {

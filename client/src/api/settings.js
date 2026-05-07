@@ -19,9 +19,12 @@ export const settingsApi = {
   updateNumbering: (id, d)  => client.patch(`/settings/numbering/${id}`, d),
 
   // Warehouses
-  listWarehouses:   ()      => client.get('/settings/warehouses'),
-  createWarehouse:  (data)  => client.post('/settings/warehouses', data),
-  updateWarehouse:  (id, d) => client.patch(`/settings/warehouses/${id}`, d),
+  listWarehouses:       ()          => client.get('/settings/warehouses'),
+  createWarehouse:      (data)      => client.post('/settings/warehouses', data),
+  updateWarehouse:      (id, d)     => client.patch(`/settings/warehouses/${id}`, d),
+
+  // Chart of accounts (for dropdowns)
+  listChartOfAccounts:  (params)    => client.get('/settings/chart-of-accounts', { params }),
 
   // Audit
   getAudit: (params) => client.get('/settings/audit', { params }),

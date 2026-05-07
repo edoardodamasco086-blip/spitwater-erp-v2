@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/inspect-schema.js warehouse_zones)",
+      "Bash(node scripts/inspect-schema.js warehouse_bins)",
+      "Bash(node scripts/inspect-schema.js stock_levels)",
+      "Bash(node scripts/inspect-schema.js stock_movements)",
+      "Bash(node scripts/migrate-wms-phase1.js)",
+      "Bash(node scripts/inspect-schema.js stock_reservations)",
+      "Bash(node scripts/inspect-schema.js fifo_layers)",
+      "Bash(node scripts/inspect-schema.js fifo_consumption_log)",
+      "Bash(node scripts/inspect-schema.js warehouses)",
+      "Bash(node -e ' *)",
+      "Bash(node server/scripts/migrate-audit-changes.js)",
+      "Bash(node scripts/migrate-audit-changes.js)"
+    ]
+  }
+}

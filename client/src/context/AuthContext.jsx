@@ -1,29 +1,26 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../api/auth';
+import { setAccessToken, clearAccessToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true); // true on first mount while we verify token
+  const [loading, setLoading] = useState(true);
 
-  // ── On mount: check if we have a stored token and verify it ──
+  // ── On mount: restore session via the HttpOnly refresh cookie ──
+  // The access token lives only in memory and is gone on reload.
+  // Calling /me triggers the Axios interceptor: if the access token is
+  // absent/expired it silently calls /auth/refresh (using the cookie),
+  // gets a new access token, then retries /me — all transparent.
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    // Verify token by fetching /me
     authApi.me()
       .then(({ data }) => {
         setUser(data.data);
       })
       .catch(() => {
-        // Token invalid or expired and refresh also failed — clear everything
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
+        // No valid session — refresh also failed or no cookie
+        clearAccessToken();
       })
       .finally(() => {
         setLoading(false);
@@ -33,12 +30,10 @@ export function AuthProvider({ children }) {
   // ── Login ─────────────────────────────────────────────────────
   const login = useCallback(async (email, password) => {
     const { data } = await authApi.login(email, password);
-    const { accessToken, refreshToken, user: userData } = data.data;
+    const { accessToken, user: userData } = data.data;
 
-    localStorage.setItem('accessToken',  accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    localStorage.setItem('user',         JSON.stringify(userData));
-
+    // Store access token in memory only — refresh token is in HttpOnly cookie
+    setAccessToken(accessToken);
     setUser(userData);
     return userData;
   }, []);
@@ -46,14 +41,11 @@ export function AuthProvider({ children }) {
   // ── Logout ────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      await authApi.logout(refreshToken);
+      await authApi.logout(); // server clears the HttpOnly cookie
     } catch {
       // Best-effort — always clear local state even if server call fails
     } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      clearAccessToken();
       setUser(null);
     }
   }, []);

@@ -59,25 +59,49 @@ const { scrapeMarketDataForProduct }          = require('../services/marketScrap
 
 router.use(requireAuth);
 
-// ── Helper: write audit log ───────────────────────────────────
-async function audit(req, action, entityId, entityRef, description) {
+// ── Helper: write audit log (returns inserted id) ────────────
+async function audit(req, action, entityId, entityRef, description, entityType = 'product') {
   try {
-    await pool.request()
-      .input('org_id',      sql.Int,           req.user.orgId)
-      .input('user_id',     sql.Int,           req.user.userId)
-      .input('user_email',  sql.VarChar(200),  req.user.email)
-      .input('user_name',   sql.NVarChar(200), req.user.name)
-      .input('action_type', sql.VarChar(60),   action)
-      .input('entity_id',   sql.BigInt,        entityId)
-      .input('entity_ref',  sql.NVarChar(100), entityRef)
+    const r = await pool.request()
+      .input('org_id',      sql.Int,            req.user.orgId)
+      .input('user_id',     sql.Int,            req.user.userId)
+      .input('user_email',  sql.VarChar(200),   req.user.email)
+      .input('user_name',   sql.NVarChar(200),  req.user.name)
+      .input('action_type', sql.VarChar(60),    action)
+      .input('entity_type', sql.VarChar(60),    entityType)
+      .input('entity_id',   sql.BigInt,         entityId)
+      .input('entity_ref',  sql.NVarChar(100),  entityRef)
       .input('description', sql.NVarChar(1000), description)
       .query(`
         INSERT INTO audit_log (org_id,user_id,user_email,user_name,action_type,
-          entity_type,entity_id,entity_ref,description,occurred_at)
+          entity_type,entity_id,entity_ref,description,is_override,occurred_at)
+        OUTPUT INSERTED.id
         VALUES (@org_id,@user_id,@user_email,@user_name,@action_type,
-          'product',@entity_id,@entity_ref,@description,GETDATE())
+          @entity_type,@entity_id,@entity_ref,@description,0,GETDATE())
       `);
-  } catch { /* best-effort */ }
+    return r.recordset[0]?.id ?? null;
+  } catch { return null; }
+}
+
+// ── Helper: write field-level change rows ────────────────────
+async function auditChanges(logId, changes) {
+  if (!logId || !changes.length) return;
+  try {
+    for (const { field, oldVal, newVal, dataType } of changes) {
+      await pool.request()
+        .input('log_id',    sql.BigInt,        logId)
+        .input('field',     sql.NVarChar(200), field)
+        .input('old_value', sql.NVarChar(sql.MAX), oldVal != null ? String(oldVal) : null)
+        .input('new_value', sql.NVarChar(sql.MAX), newVal != null ? String(newVal) : null)
+        .input('data_type', sql.VarChar(20),   (dataType || 'text').substring(0, 20))
+        .query(`
+          INSERT INTO audit_changes (audit_log_id,field_name,old_value,new_value,data_type)
+          VALUES (@log_id,@field,@old_value,@new_value,@data_type)
+        `);
+    }
+  } catch (err) {
+    logger.warn(`[audit] Failed to write audit_changes for log ${logId}: ${err.message}`);
+  }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -88,11 +112,13 @@ router.get('/categories', asyncHandler(async (req, res) => {
   const rows = await pool.request()
     .input('org_id', sql.Int, req.user.orgId)
     .query(`
-      SELECT id, name, parent_id, description, sort_order, is_active,
-        (SELECT COUNT(*) FROM products p WHERE p.category_id = pc.id AND p.is_void = 0) AS product_count
+      SELECT pc.id, pc.name, pc.parent_id, pc.description, pc.sort_order, pc.is_active,
+        COUNT(p.id) AS product_count
       FROM product_categories pc
-      WHERE org_id = @org_id
-      ORDER BY sort_order ASC, name ASC
+      LEFT JOIN products p ON p.category_id = pc.id AND p.is_void = 0
+      WHERE pc.org_id = @org_id
+      GROUP BY pc.id, pc.name, pc.parent_id, pc.description, pc.sort_order, pc.is_active
+      ORDER BY pc.sort_order ASC, pc.name ASC
     `);
 
   const all = rows.recordset;
@@ -460,6 +486,7 @@ router.get('/:id', requirePermission('products','read'), asyncHandler(async (req
   await poolConnect;
   const id    = parseInt(req.params.id);
   const orgId = req.user.orgId;
+  if (isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid product ID.' });
 
   const [productRes, imagesRes, docsRes] = await Promise.all([
     pool.request()
@@ -722,11 +749,21 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
   const id    = parseInt(req.params.id);
   const orgId = req.user.orgId;
 
-  // Verify exists
+  // Verify exists + capture current values for diff
   const check = await pool.request()
     .input('id', sql.Int, id).input('org_id', sql.Int, orgId)
-    .query('SELECT product_code, name FROM products WHERE id=@id AND org_id=@org_id AND is_void=0');
+    .query(`
+      SELECT product_code, name, barcode, description, product_type, category_id,
+             base_uom_id, tracking_type, can_be_sold, default_sales_price,
+             can_be_purchased, default_purchase_price, preferred_supplier_id,
+             supplier_part_number, lead_time_days, min_order_qty, order_multiple,
+             min_stock_level, max_stock_level, reorder_qty,
+             warranty_months, extended_warranty_months, warranty_terms_text,
+             weight_kg, length_cm, width_cm, height_cm, is_active
+      FROM products WHERE id=@id AND org_id=@org_id AND is_void=0
+    `);
   if (!check.recordset.length) return res.status(404).json({ success: false, error: 'Product not found.' });
+  const before = check.recordset[0];
 
   const {
     barcode, name, description, product_type, category_id,
@@ -835,7 +872,52 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
       WHERE id = @id
     `);
 
-  await audit(req, 'product.update', id, check.recordset[0].product_code, `Updated product: ${check.recordset[0].name}`);
+  // Build field-level diff for audit trail
+  const TRACKED = [
+    ['name',                     name,                    'text'],
+    ['barcode',                  barcode,                 'text'],
+    ['description',              description,             'text'],
+    ['product_type',             product_type,            'text'],
+    ['category_id',              category_id,             'int'],
+    ['base_uom_id',              base_uom_id,             'int'],
+    ['tracking_type',            tracking_type,           'text'],
+    ['can_be_sold',              can_be_sold,             'bool'],
+    ['default_sales_price',      default_sales_price,     'decimal'],
+    ['can_be_purchased',         can_be_purchased,        'bool'],
+    ['default_purchase_price',   default_purchase_price,  'decimal'],
+    ['preferred_supplier_id',    preferred_supplier_id,   'int'],
+    ['supplier_part_number',     supplier_part_number,    'text'],
+    ['lead_time_days',           lead_time_days,          'int'],
+    ['min_order_qty',            min_order_qty,           'decimal'],
+    ['order_multiple',           order_multiple,          'decimal'],
+    ['min_stock_level',          min_stock_level,         'decimal'],
+    ['max_stock_level',          max_stock_level,         'decimal'],
+    ['reorder_qty',              reorder_qty,             'decimal'],
+    ['warranty_months',          warranty_months,         'int'],
+    ['extended_warranty_months', extended_warranty_months,'int'],
+    ['weight_kg',                weight_kg,               'decimal'],
+    ['length_cm',                length_cm,               'decimal'],
+    ['width_cm',                 width_cm,                'decimal'],
+    ['height_cm',                height_cm,               'decimal'],
+    ['is_active',                is_active,               'bool'],
+  ];
+  const changes = [];
+  for (const [field, newVal, dataType] of TRACKED) {
+    if (newVal == null) continue;
+    const oldVal = before[field];
+    // normalise for comparison (coerce bool, trim strings)
+    const oldStr = oldVal != null ? String(oldVal) : '';
+    const newStr = newVal != null ? String(newVal) : '';
+    if (oldStr !== newStr) {
+      changes.push({ field, oldVal: oldStr, newVal: newStr, dataType });
+    }
+  }
+
+  const logId = await audit(req, 'product.update', id, before.product_code,
+    `Updated product: ${before.name}${changes.length ? ` (${changes.length} field${changes.length > 1 ? 's' : ''} changed)` : ''}`
+  );
+  await auditChanges(logId, changes);
+
   return res.json({ success: true, message: 'Product updated.' });
 }));
 
@@ -862,6 +944,88 @@ router.patch('/:id/void', requirePermission('products','delete'), asyncHandler(a
     `);
 
   return res.json({ success: true, message: 'Product archived.' });
+}));
+
+// ────────────────────────────────────────────────────────────────
+// GET /api/products/:id/history  — audit timeline for a product
+// Returns audit_log rows (with nested audit_changes) for this product
+// ────────────────────────────────────────────────────────────────
+router.get('/:id/history', requirePermission('products','read'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const id    = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+  if (isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid product ID.' });
+
+  const page  = Math.max(1, parseInt(req.query.page)  || 1);
+  const limit = Math.min(100, parseInt(req.query.limit) || 50);
+  const offset = (page - 1) * limit;
+
+  const [logRows, countRow] = await Promise.all([
+    pool.request()
+      .input('entity_id', sql.BigInt, id)
+      .input('entity_type', sql.VarChar(60), 'product')
+      .input('org_id', sql.Int, orgId)
+      .input('limit', sql.Int, limit)
+      .input('offset', sql.Int, offset)
+      .query(`
+        WITH paged_logs AS (
+          SELECT al.id, al.action_type, al.description,
+                 al.user_name, al.user_email, al.occurred_at
+          FROM audit_log al
+          WHERE al.entity_type = @entity_type
+            AND al.entity_id   = @entity_id
+            AND al.org_id      = @org_id
+          ORDER BY al.occurred_at DESC, al.id DESC
+          OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
+        )
+        SELECT pl.id, pl.action_type, pl.description,
+               pl.user_name, pl.user_email, pl.occurred_at,
+               ac.id AS change_id, ac.field_name, ac.old_value, ac.new_value, ac.data_type
+        FROM paged_logs pl
+        LEFT JOIN audit_changes ac ON ac.audit_log_id = pl.id
+        ORDER BY pl.occurred_at DESC, pl.id DESC, ac.id ASC
+      `),
+    pool.request()
+      .input('entity_id', sql.BigInt, id)
+      .input('entity_type', sql.VarChar(60), 'product')
+      .input('org_id', sql.Int, orgId)
+      .query(`
+        SELECT COUNT(DISTINCT al.id) AS n
+        FROM audit_log al
+        WHERE al.entity_type=@entity_type AND al.entity_id=@entity_id AND al.org_id=@org_id
+      `),
+  ]);
+
+  // Group changes under their audit_log entry
+  const eventMap = new Map();
+  for (const row of logRows.recordset) {
+    if (!eventMap.has(row.id)) {
+      eventMap.set(row.id, {
+        id: row.id,
+        action_type:  row.action_type,
+        description:  row.description,
+        user_name:    row.user_name,
+        user_email:   row.user_email,
+        occurred_at:  row.occurred_at,
+        changes:      [],
+      });
+    }
+    if (row.change_id) {
+      eventMap.get(row.id).changes.push({
+        field:     row.field_name,
+        old_value: row.old_value,
+        new_value: row.new_value,
+        data_type: row.data_type,
+      });
+    }
+  }
+
+  const total = countRow.recordset[0].n;
+  return res.json({
+    success: true,
+    data: Array.from(eventMap.values()),
+    meta: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 }));
 
 // ────────────────────────────────────────────────────────────────
@@ -900,9 +1064,11 @@ router.post('/:id/images', requirePermission('products','update'), uploadProduct
     const mdPath = path.join(parsedPath.dir, `${parsedPath.name}_md${parsedPath.ext}`);
     const lgPath = path.join(parsedPath.dir, `${parsedPath.name}_lg${parsedPath.ext}`);
 
-    await sharp(req.file.path).resize({ width: 150, withoutEnlargement: true }).toFile(smPath);
-    await sharp(req.file.path).resize({ width: 500, withoutEnlargement: true }).toFile(mdPath);
-    await sharp(req.file.path).resize({ width: 1024, withoutEnlargement: true }).toFile(lgPath);
+    await Promise.all([
+      sharp(req.file.path).resize({ width: 150,  withoutEnlargement: true }).toFile(smPath),
+      sharp(req.file.path).resize({ width: 500,  withoutEnlargement: true }).toFile(mdPath),
+      sharp(req.file.path).resize({ width: 1024, withoutEnlargement: true }).toFile(lgPath),
+    ]);
   } catch (err) {
     console.error('Thumbnail generation failed:', err);
   }
@@ -1157,47 +1323,48 @@ router.put('/:id/custom-values', requirePermission('products','update'), asyncHa
   const defMap = {};
   defs.recordset.forEach(d => { defMap[d.field_key] = d; });
 
-  for (const [fieldKey, rawValue] of Object.entries(values)) {
-    const def = defMap[fieldKey];
-    if (!def) continue;
+  await Promise.all(
+    Object.entries(values).map(async ([fieldKey, rawValue]) => {
+      const def = defMap[fieldKey];
+      if (!def) return;
 
-    // Determine which column to use
-    let valueText = null, valueNumber = null, valueDate = null, valueBoolean = null, valueJson = null;
-    if (['text','textarea','select','multi_select'].includes(def.field_type)) {
-      valueText   = rawValue != null ? String(rawValue) : null;
-    } else if (def.field_type === 'number') {
-      valueNumber = rawValue != null ? parseFloat(rawValue) : null;
-    } else if (def.field_type === 'date') {
-      valueDate   = rawValue || null;
-    } else if (def.field_type === 'boolean') {
-      valueBoolean = rawValue ? 1 : 0;
-    } else {
-      valueJson   = rawValue != null ? JSON.stringify(rawValue) : null;
-    }
+      let valueText = null, valueNumber = null, valueDate = null, valueBoolean = null, valueJson = null;
+      if (['text','textarea','select','multi_select'].includes(def.field_type)) {
+        valueText   = rawValue != null ? String(rawValue) : null;
+      } else if (def.field_type === 'number') {
+        valueNumber = rawValue != null ? parseFloat(rawValue) : null;
+      } else if (def.field_type === 'date') {
+        valueDate   = rawValue || null;
+      } else if (def.field_type === 'boolean') {
+        valueBoolean = rawValue ? 1 : 0;
+      } else {
+        valueJson   = rawValue != null ? JSON.stringify(rawValue) : null;
+      }
 
-    await pool.request()
-      .input('org_id',              sql.Int,          orgId)
-      .input('field_definition_id', sql.Int,          def.id)
-      .input('entity_key',          sql.VarChar(100), 'product')
-      .input('entity_id',           sql.BigInt,       productId)
-      .input('value_text',          sql.NVarChar(sql.MAX), valueText)
-      .input('value_number',        sql.Decimal(18,4), valueNumber)
-      .input('value_date',          sql.Date,          valueDate)
-      .input('value_boolean',       sql.Bit,           valueBoolean)
-      .input('value_json',          sql.NVarChar(sql.MAX), valueJson)
-      .input('updated_by',          sql.Int,           req.user.userId)
-      .query(`
-        IF EXISTS (SELECT 1 FROM custom_field_values WHERE org_id=@org_id AND field_definition_id=@field_definition_id AND entity_key=@entity_key AND entity_id=@entity_id)
-          UPDATE custom_field_values SET
-            value_text=@value_text, value_number=@value_number, value_date=@value_date,
-            value_boolean=@value_boolean, value_json=@value_json,
-            updated_by=@updated_by, updated_at=GETDATE()
-          WHERE org_id=@org_id AND field_definition_id=@field_definition_id AND entity_key=@entity_key AND entity_id=@entity_id
-        ELSE
-          INSERT INTO custom_field_values (org_id,field_definition_id,entity_key,entity_id,value_text,value_number,value_date,value_boolean,value_json,created_by,created_at,updated_by,updated_at)
-          VALUES (@org_id,@field_definition_id,@entity_key,@entity_id,@value_text,@value_number,@value_date,@value_boolean,@value_json,@updated_by,GETDATE(),@updated_by,GETDATE())
-      `);
-  }
+      await pool.request()
+        .input('org_id',              sql.Int,               orgId)
+        .input('field_definition_id', sql.Int,               def.id)
+        .input('entity_key',          sql.VarChar(100),      'product')
+        .input('entity_id',           sql.BigInt,            productId)
+        .input('value_text',          sql.NVarChar(sql.MAX), valueText)
+        .input('value_number',        sql.Decimal(18,4),     valueNumber)
+        .input('value_date',          sql.Date,              valueDate)
+        .input('value_boolean',       sql.Bit,               valueBoolean)
+        .input('value_json',          sql.NVarChar(sql.MAX), valueJson)
+        .input('updated_by',          sql.Int,               req.user.userId)
+        .query(`
+          IF EXISTS (SELECT 1 FROM custom_field_values WHERE org_id=@org_id AND field_definition_id=@field_definition_id AND entity_key=@entity_key AND entity_id=@entity_id)
+            UPDATE custom_field_values SET
+              value_text=@value_text, value_number=@value_number, value_date=@value_date,
+              value_boolean=@value_boolean, value_json=@value_json,
+              updated_by=@updated_by, updated_at=GETDATE()
+            WHERE org_id=@org_id AND field_definition_id=@field_definition_id AND entity_key=@entity_key AND entity_id=@entity_id
+          ELSE
+            INSERT INTO custom_field_values (org_id,field_definition_id,entity_key,entity_id,value_text,value_number,value_date,value_boolean,value_json,created_by,created_at,updated_by,updated_at)
+            VALUES (@org_id,@field_definition_id,@entity_key,@entity_id,@value_text,@value_number,@value_date,@value_boolean,@value_json,@updated_by,GETDATE(),@updated_by,GETDATE())
+        `);
+    })
+  );
 
   return res.json({ success: true, message: 'Custom values saved.' });
 }));
@@ -1251,31 +1418,32 @@ router.put('/:id/pricing', requirePermission('products','update'), asyncHandler(
 
   if (!Array.isArray(prices)) return res.status(400).json({ success: false, error: 'prices array required.' });
 
-  for (const entry of prices) {
-    if (entry.unit_price == null) {
-      // Remove entry if price is cleared
-      await pool.request()
-        .input('price_list_id', sql.Int, entry.price_list_id)
-        .input('product_id',    sql.Int, productId)
-        .query('DELETE FROM price_list_items WHERE price_list_id=@price_list_id AND product_id=@product_id');
-      continue;
-    }
+  await Promise.all(
+    prices.map(async (entry) => {
+      if (entry.unit_price == null) {
+        await pool.request()
+          .input('price_list_id', sql.Int, entry.price_list_id)
+          .input('product_id',    sql.Int, productId)
+          .query('DELETE FROM price_list_items WHERE price_list_id=@price_list_id AND product_id=@product_id');
+        return;
+      }
 
-    await pool.request()
-      .input('price_list_id', sql.Int,          entry.price_list_id)
-      .input('product_id',    sql.Int,          productId)
-      .input('unit_price',    sql.Decimal(18,4), parseFloat(entry.unit_price) || 0)
-      .input('min_qty',       sql.Decimal(18,4), parseFloat(entry.min_qty)    || 1)
-      .input('discount_pct',  sql.Decimal(5,2),  parseFloat(entry.discount_pct) || 0)
-      .query(`
-        IF EXISTS (SELECT 1 FROM price_list_items WHERE price_list_id=@price_list_id AND product_id=@product_id)
-          UPDATE price_list_items SET unit_price=@unit_price, min_qty=@min_qty, discount_pct=@discount_pct
-          WHERE price_list_id=@price_list_id AND product_id=@product_id
-        ELSE
-          INSERT INTO price_list_items (price_list_id,product_id,unit_price,min_qty,discount_pct)
-          VALUES (@price_list_id,@product_id,@unit_price,@min_qty,@discount_pct)
-      `);
-  }
+      await pool.request()
+        .input('price_list_id', sql.Int,           entry.price_list_id)
+        .input('product_id',    sql.Int,           productId)
+        .input('unit_price',    sql.Decimal(18,4), parseFloat(entry.unit_price) || 0)
+        .input('min_qty',       sql.Decimal(18,4), parseFloat(entry.min_qty)    || 1)
+        .input('discount_pct',  sql.Decimal(5,2),  parseFloat(entry.discount_pct) || 0)
+        .query(`
+          IF EXISTS (SELECT 1 FROM price_list_items WHERE price_list_id=@price_list_id AND product_id=@product_id)
+            UPDATE price_list_items SET unit_price=@unit_price, min_qty=@min_qty, discount_pct=@discount_pct
+            WHERE price_list_id=@price_list_id AND product_id=@product_id
+          ELSE
+            INSERT INTO price_list_items (price_list_id,product_id,unit_price,min_qty,discount_pct)
+            VALUES (@price_list_id,@product_id,@unit_price,@min_qty,@discount_pct)
+        `);
+    })
+  );
 
   return res.json({ success: true, message: 'Pricing saved.' });
 }));
@@ -1347,24 +1515,35 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
     .input('org_id', sql.Int, orgId)
     .input('id', sql.Int, productId)
     .query(`
-      SELECT p.id, p.product_code, 
+      SELECT p.id, p.product_code, p.name AS product_name,
              (SELECT TOP 1 name FROM product_categories WHERE id=p.category_id) as brand,
              ps.supplier_part_number
       FROM products p
       LEFT JOIN product_suppliers ps ON ps.product_id = p.id AND ps.org_id = p.org_id AND ps.is_active = 1
       WHERE p.id=@id AND p.org_id=@org_id
     `);
-    
+
   if (!productRes.recordset.length) return res.status(404).json({ success: false, error: 'Product not found.' });
-  
-  const brand = productRes.recordset[0].brand;
-  const sku = productRes.recordset[0].product_code;
-  
-  // Collect all unique queries to run
+
+  const brand       = productRes.recordset[0].brand;
+  const sku         = productRes.recordset[0].product_code;
+  const productName = productRes.recordset[0].product_name;
+
+  // Only skip codes that are clearly internal ERP references (e.g. SW-00003)
+  function isInternalCode(code) {
+    if (!code) return true;
+    if (/^[A-Z]{1,4}-\d+$/i.test(code)) return true; // SW-00003 style → internal ERP ref
+    return false;
+  }
+
+  // Collect all unique queries to run — product name first, then part numbers
   const queries = new Set();
-  if (sku) queries.add(sku);
+  if (productName) queries.add(productName);
+  if (sku && !isInternalCode(sku)) queries.add(sku);
   productRes.recordset.forEach(row => {
-    if (row.supplier_part_number) queries.add(row.supplier_part_number);
+    if (row.supplier_part_number && row.supplier_part_number.trim()) {
+      queries.add(row.supplier_part_number.trim());
+    }
   });
   
   const allCompetitors = [];
@@ -1379,8 +1558,8 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
     }
   }
   
-  // 4. Save results
-  for (const comp of allCompetitors) {
+  // 4. Save results — skip any entry missing a URL (non-nullable column)
+  for (const comp of allCompetitors.filter(c => c.url)) {
     await pool.request()
       .input('org_id', sql.Int, orgId)
       .input('product_id', sql.Int, productId)

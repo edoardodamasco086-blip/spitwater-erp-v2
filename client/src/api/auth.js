@@ -4,11 +4,11 @@ export const authApi = {
   login: (email, password) =>
     client.post('/auth/login', { email, password }),
 
-  logout: (refreshToken) =>
-    client.post('/auth/logout', { refreshToken }),
+  logout: () =>
+    client.post('/auth/logout', {}),
 
-  refresh: (refreshToken) =>
-    client.post('/auth/refresh', { refreshToken }),
+  refresh: () =>
+    client.post('/auth/refresh', {}),
 
   me: () =>
     client.get('/auth/me'),
