@@ -35,7 +35,7 @@ router.get('/', requirePermission('contacts','read'), asyncHandler(async (req, r
   const search  = req.query.search  || '';
   const type    = req.query.type    || '';
   const page    = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit   = Math.min(100, parseInt(req.query.limit) || 50);
+  const limit   = Math.max(1, Math.min(100, parseInt(req.query.limit) || 50));
   const offset  = (page - 1) * limit;
 
   // Build WHERE clauses

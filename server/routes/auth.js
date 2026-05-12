@@ -122,6 +122,11 @@ router.post('/login', loginLimiter, asyncHandler(async (req, res) => {
     });
   }
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_RE.test(email.trim())) {
+    return res.status(400).json({ success: false, error: 'Invalid email format.' });
+  }
+
   await poolConnect;
 
   // ── 1. Look up user by email ──────────────────────────────
@@ -320,6 +325,12 @@ router.post('/refresh', refreshLimiter, requireSameOrigin, asyncHandler(async (r
 
   if (!rows.recordset.length || rows.recordset[0].revoked_at) {
     return res.status(401).json({ success: false, error: 'Refresh token has been revoked.', code: 'REFRESH_REVOKED' });
+  }
+
+  // Guard: token's stored org must match what's in the JWT — prevents cross-org token reuse
+  if (rows.recordset[0].org_id !== decoded.orgId) {
+    logger.warn(`Refresh: org mismatch for userId=${decoded.userId} (token org=${rows.recordset[0].org_id}, jwt org=${decoded.orgId})`);
+    return res.status(401).json({ success: false, error: 'Refresh token invalid.', code: 'REFRESH_ORG_MISMATCH' });
   }
 
   const userRow = await pool.request()

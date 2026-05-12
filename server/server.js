@@ -37,6 +37,8 @@ const productAssociationTypesRoutes = require('./routes/product-association-type
 const productAssociationsRoutes = require('./routes/product-associations');
 const customFieldsRoutes    = require('./routes/custom-fields');
 const warehouseRoutes       = require('./routes/warehouse');
+const accountingRoutes      = require('./routes/accounting');
+const receivingRoutes       = require('./routes/receiving');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -128,6 +130,8 @@ app.use('/api/product-association-types', productAssociationTypesRoutes);
 app.use('/api/products/:id',      productAssociationsRoutes);
 app.use('/api/custom-fields',     customFieldsRoutes);
 app.use('/api/warehouse',         warehouseRoutes);
+app.use('/api/accounting',        accountingRoutes);
+app.use('/api/receiving',         receivingRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

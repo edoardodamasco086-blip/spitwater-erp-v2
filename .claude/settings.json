@@ -12,7 +12,26 @@
       "Bash(node scripts/inspect-schema.js warehouses)",
       "Bash(node -e ' *)",
       "Bash(node server/scripts/migrate-audit-changes.js)",
-      "Bash(node scripts/migrate-audit-changes.js)"
+      "Bash(node scripts/migrate-audit-changes.js)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\" -Recurse -Type Directory)",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\" -Recurse -Directory | Select-Object -First 30 | ForEach-Object { $_.FullName })",
+      "Bash(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\\\\client\\\\src\\\\pages\\\\admin\\\\products\\\\home\" -Recurse)",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(xargs basename -a)",
+      "Bash(grep -r \"journal\\\\|gl_\\\\|chart_of_accounts\\\\|cogs\\\\|landed_cost\" \"c:\\\\Projects\\\\spitwater-erp-v2/server\" --include=\"*.js\" ! -path \"*/node_modules/*\")",
+      "Bash(xargs -I {} basename {})",
+      "Bash(xargs grep -l \"journal\\\\|gl_transaction\\\\|double_entry\")",
+      "Bash(node scripts/migrate-accounting.js)",
+      "Bash(npx vite *)",
+      "Bash(node server/scripts/migrate-accounting-v2.js)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); console.log\\('SERVER:', process.env.DB_SERVER, 'PORT:', process.env.DB_PORT, 'DB:', process.env.DB_DATABASE\\)\")",
+      "Bash(node ../server/scripts/migrate-accounting-v2.js)",
+      "Bash(node ../server/scripts/seed-ato-coa.js)",
+      "Bash(npm run *)",
+      "PowerShell(cd c:\\\\Projects\\\\spitwater-erp-v2\\\\server; node scripts/_check_cols.js 2>&1; Write-Host \"Exit: $LASTEXITCODE\")"
     ]
   }
 }

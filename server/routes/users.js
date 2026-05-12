@@ -97,6 +97,11 @@ router.post('/invite', requirePermission('users', 'write'), asyncHandler(async (
     return res.status(400).json({ success: false, error: 'email and role are required.' });
   }
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_RE.test(email.trim())) {
+    return res.status(400).json({ success: false, error: 'Invalid email format.' });
+  }
+
   const validRoles = ['admin', 'editor', 'viewer'];
   if (!validRoles.includes(role)) {
     return res.status(400).json({ success: false, error: `role must be one of: ${validRoles.join(', ')}` });

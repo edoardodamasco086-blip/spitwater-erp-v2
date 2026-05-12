@@ -4,13 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 import styles from './LoginPage.module.css';
 
 export default function LoginPage() {
-  const { login, isAdmin } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPwd,  setShowPwd]  = useState(false);
-  const [remember, setRemember] = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
@@ -140,18 +139,8 @@ export default function LoginPage() {
 
           {/* Options row */}
           <div className={styles.options}>
-            <label className={styles.checkWrap}>
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={e => setRemember(e.target.checked)}
-              />
-              <span className={styles.checkBox}>
-                {remember && <CheckIcon />}
-              </span>
-              <span className={styles.checkLabel}>Keep me signed in</span>
-            </label>
-            <a href="#" className={styles.forgotLink}>Forgot password?</a>
+            <span />
+            <span className={styles.forgotLink} style={{ color: 'var(--text-sub)', fontSize: 13 }}>Contact your admin to reset password</span>
           </div>
 
           {/* Submit */}
@@ -214,7 +203,4 @@ function EyeOffIcon() {
 }
 function AlertIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
-}
-function CheckIcon() {
-  return <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeWidth="2.5"><polyline points="1,5 4,8 9,2"/></svg>;
 }

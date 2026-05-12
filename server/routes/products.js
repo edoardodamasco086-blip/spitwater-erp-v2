@@ -415,7 +415,7 @@ router.get('/', requirePermission('products','read'), asyncHandler(async (req, r
   const type       = req.query.type       || '';
   const active     = req.query.active     !== 'false';
   const page       = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit      = Math.min(200, parseInt(req.query.limit) || 50);
+  const limit      = Math.max(1, Math.min(200, parseInt(req.query.limit) || 50));
   const offset     = (page - 1) * limit;
 
   const conditions = ['p.org_id = @org_id', 'p.is_void = 0'];
@@ -649,6 +649,11 @@ router.post('/', requirePermission('products','write'), asyncHandler(async (req,
 
   if (!name) return res.status(400).json({ success: false, error: 'name is required.' });
 
+  const VALID_PRODUCT_TYPES = ['product', 'service', 'component', 'kit'];
+  if (!VALID_PRODUCT_TYPES.includes(product_type)) {
+    return res.status(400).json({ success: false, error: `product_type must be one of: ${VALID_PRODUCT_TYPES.join(', ')}.` });
+  }
+
   // Auto-generate product code if not provided
   let code = product_code?.trim();
   if (!code) {
@@ -775,6 +780,11 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     weight_kg, length_cm, width_cm, height_cm,
     is_active,
   } = req.body;
+
+  const VALID_PRODUCT_TYPES = ['product', 'service', 'component', 'kit'];
+  if (product_type != null && !VALID_PRODUCT_TYPES.includes(product_type)) {
+    return res.status(400).json({ success: false, error: `product_type must be one of: ${VALID_PRODUCT_TYPES.join(', ')}.` });
+  }
 
   // Guard: if base_uom_id is being changed, verify no blockers
   if (base_uom_id != null) {
@@ -957,7 +967,7 @@ router.get('/:id/history', requirePermission('products','read'), asyncHandler(as
   if (isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid product ID.' });
 
   const page  = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit = Math.min(100, parseInt(req.query.limit) || 50);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 50));
   const offset = (page - 1) * limit;
 
   const [logRows, countRow] = await Promise.all([
@@ -1070,7 +1080,7 @@ router.post('/:id/images', requirePermission('products','update'), uploadProduct
       sharp(req.file.path).resize({ width: 1024, withoutEnlargement: true }).toFile(lgPath),
     ]);
   } catch (err) {
-    console.error('Thumbnail generation failed:', err);
+    logger.warn('Thumbnail generation failed: ' + err.message);
   }
 
   const result = await pool.request()
@@ -1501,16 +1511,7 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
   const productId = parseInt(req.params.id);
   const orgId = req.user.orgId;
   
-  // 1. Delete ALL existing records for this product to ensure we only show current relevant data
-  await pool.request()
-    .input('org_id', sql.Int, orgId)
-    .input('product_id', sql.Int, productId)
-    .query(`
-      DELETE FROM product_competitor_data 
-      WHERE org_id = @org_id AND product_id = @product_id
-    `);
-
-  // 2. Get product details and ALL associated supplier part numbers
+  // 1. Get product details and ALL associated supplier part numbers
   const productRes = await pool.request()
     .input('org_id', sql.Int, orgId)
     .input('id', sql.Int, productId)
@@ -1558,23 +1559,37 @@ router.post('/:id/market-data/refresh', requirePermission('products', 'update'),
     }
   }
   
-  // 4. Save results — skip any entry missing a URL (non-nullable column)
-  for (const comp of allCompetitors.filter(c => c.url)) {
-    await pool.request()
-      .input('org_id', sql.Int, orgId)
+  // 4. Atomically replace old records with new ones inside a transaction
+  const validComps = allCompetitors.filter(c => c.url);
+  const txn = pool.transaction();
+  await txn.begin();
+  try {
+    await new sql.Request(txn)
+      .input('org_id',     sql.Int, orgId)
       .input('product_id', sql.Int, productId)
-      .input('website_source', sql.VarChar(255), comp.website_source)
-      .input('url', sql.NVarChar(2000), comp.url)
-      .input('price', sql.Decimal(18,2), comp.price || null)
-      .input('description', sql.NVarChar(sql.MAX), comp.description || null)
-      .input('accuracy_score', sql.Int, comp.accuracy_score)
-      .input('search_query', sql.NVarChar(100), comp.search_query)
-      .query(`
-        INSERT INTO product_competitor_data
-        (org_id, product_id, website_source, url, price, description, accuracy_score, search_query)
-        VALUES
-        (@org_id, @product_id, @website_source, @url, @price, @description, @accuracy_score, @search_query)
-      `);
+      .query('DELETE FROM product_competitor_data WHERE org_id=@org_id AND product_id=@product_id');
+
+    for (const comp of validComps) {
+      await new sql.Request(txn)
+        .input('org_id',         sql.Int,              orgId)
+        .input('product_id',     sql.Int,              productId)
+        .input('website_source', sql.VarChar(255),     comp.website_source)
+        .input('url',            sql.NVarChar(2000),   comp.url)
+        .input('price',          sql.Decimal(18,2),    comp.price || null)
+        .input('description',    sql.NVarChar(sql.MAX), comp.description || null)
+        .input('accuracy_score', sql.Int,              comp.accuracy_score)
+        .input('search_query',   sql.NVarChar(100),    comp.search_query)
+        .query(`
+          INSERT INTO product_competitor_data
+          (org_id, product_id, website_source, url, price, description, accuracy_score, search_query)
+          VALUES
+          (@org_id, @product_id, @website_source, @url, @price, @description, @accuracy_score, @search_query)
+        `);
+    }
+    await txn.commit();
+  } catch (err) {
+    await txn.rollback();
+    throw err;
   }
   
   // 5. Return updated list

@@ -165,6 +165,7 @@ export default function DashboardShell() {
             <NavItem to="/products"   icon={<ProductIcon />} label="Products"          collapsed={collapsed} />
             <NavItem to="/inventory"  icon={<BoxIcon />}      label="Inventory"         collapsed={collapsed} />
             <NavItem to="/movements"  icon={<HistoryIcon />}  label="Movement History"  collapsed={collapsed} />
+            <NavItem to="/receiving"  icon={<TruckIcon />}    label="Goods Receiving"   collapsed={collapsed} />
             <NavItem to="/purchasing" icon={<CartIcon />}     label="Purchasing"        collapsed={collapsed} />
             <NavItem to="/service"    icon={<WrenchIcon />}   label="Service Jobs"      collapsed={collapsed} />
           </NavSection>
@@ -172,9 +173,9 @@ export default function DashboardShell() {
           <div className={styles.navDivider} />
 
           <NavSection label="Finance" collapsed={collapsed}>
-            <NavItem to="/journals" icon={<BookIcon />}  label="Journals"   collapsed={collapsed} />
-            <NavItem to="/reports"  icon={<ChartIcon />} label="Reports"    collapsed={collapsed} />
-            <NavItem to="/bas"      icon={<TaxIcon />}   label="BAS & Tax"  collapsed={collapsed} />
+            <NavItem to="/accounting" icon={<BookIcon />}  label="Accounting" collapsed={collapsed} />
+            <NavItem to="/reports"    icon={<ChartIcon />} label="Reports"    collapsed={collapsed} />
+            <NavItem to="/bas"        icon={<TaxIcon />}   label="BAS & Tax"  collapsed={collapsed} />
           </NavSection>
 
           <div className={styles.navDivider} />
@@ -331,4 +332,5 @@ function UomIcon()    { return ic(<><path d='M3 3h7v7H3z'/><path d='M14 3h7v7h-7
 function ValidationIcon() { return ic(<><path d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/></>); }
 function TierIcon() { return ic(<><path d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/></>); }
 function ListIcon() { return ic(<><line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/></>); }
-function FxIcon() { return ic(<><line x1='12' y1='1' x2='12' y2='23'/><path d='M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></>); }
+function FxIcon()    { return ic(<><line x1='12' y1='1' x2='12' y2='23'/><path d='M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></>); }
+function TruckIcon() { return ic(<><rect x='1' y='3' width='15' height='13' rx='2'/><polygon points='16 8 20 8 23 11 23 16 16 16 16 8'/><circle cx='5.5' cy='18.5' r='2.5'/><circle cx='18.5' cy='18.5' r='2.5'/></>); }

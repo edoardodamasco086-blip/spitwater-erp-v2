@@ -1,6 +1,9 @@
 import client from './client';
 
 export const warehouseApi = {
+  // Warehouses
+  listWarehouses: () => client.get('/warehouse'),
+
   // Zones
   listZones:  (warehouseId)  => client.get('/warehouse/zones', { params: { warehouse_id: warehouseId } }),
   createZone: (data)         => client.post('/warehouse/zones', data),

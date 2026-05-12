@@ -46,6 +46,22 @@ async function assertWarehouseOwned(pool, warehouseId, orgId) {
   return r.recordset.length > 0;
 }
 
+// ── Warehouses list ───────────────────────────────────────────
+
+router.get('/', asyncHandler(async (req, res) => {
+  await poolConnect;
+  const orgId = req.user.orgId;
+  const rows = await pool.request()
+    .input('org_id', sql.Int, orgId)
+    .query(`
+      SELECT id, code, name, warehouse_type, suburb, state, is_active, inventory_account_id
+      FROM warehouses
+      WHERE org_id = @org_id AND is_void = 0
+      ORDER BY name
+    `);
+  return res.json({ success: true, data: rows.recordset });
+}));
+
 // ── Zones ─────────────────────────────────────────────────────
 
 router.get('/zones', requirePermission('warehouses', 'read'), asyncHandler(async (req, res) => {
@@ -355,7 +371,7 @@ router.get('/stock/movements', requirePermission('inventory', 'read'), asyncHand
   const fromDate     = req.query.from_date     || null;
   const toDate       = req.query.to_date       || null;
   const page         = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit        = Math.min(200, parseInt(req.query.limit) || 25);
+  const limit        = Math.max(1, Math.min(200, parseInt(req.query.limit) || 25));
   const offset       = (page - 1) * limit;
 
   const request = pool.request()
@@ -400,7 +416,7 @@ router.get('/stock/movements', requirePermission('inventory', 'read'), asyncHand
       ORDER BY sm.moved_at DESC
       OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `),
-    countReq.query(`SELECT COUNT(*) AS n FROM stock_movements sm WHERE ${filter}`),
+    countReq.query(`SELECT COUNT(*) AS n FROM stock_movements sm LEFT JOIN products p ON p.id = sm.product_id WHERE ${filter}`),
   ]);
 
   const total = countRow.recordset[0].n;

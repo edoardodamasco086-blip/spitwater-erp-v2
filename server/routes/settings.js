@@ -83,6 +83,13 @@ router.patch('/org', requirePermission('settings', 'update'), asyncHandler(async
     invoice_due_days, quote_expiry_days,
   } = req.body;
 
+  if (invoice_due_days != null && (invoice_due_days < 0 || invoice_due_days > 365)) {
+    return res.status(400).json({ success: false, error: 'invoice_due_days must be between 0 and 365.' });
+  }
+  if (quote_expiry_days != null && (quote_expiry_days < 0 || quote_expiry_days > 365)) {
+    return res.status(400).json({ success: false, error: 'quote_expiry_days must be between 0 and 365.' });
+  }
+
   await pool.request()
     .input('org_id',       sql.Int,          orgId)
     .input('name',         sql.NVarChar(200), name         || null)
@@ -614,7 +621,7 @@ router.get('/audit', requirePermission('settings', 'update'), asyncHandler(async
   await poolConnect;
   const orgId  = req.user.orgId;
   const page   = Math.max(1, parseInt(req.query.page)  || 1);
-  const limit  = Math.min(100, parseInt(req.query.limit) || 50);
+  const limit  = Math.max(1, Math.min(100, parseInt(req.query.limit) || 50));
   const offset = (page - 1) * limit;
   const action = req.query.action || '';
   const search = req.query.search || '';
@@ -632,7 +639,7 @@ router.get('/audit', requirePermission('settings', 'update'), asyncHandler(async
       .input('limit',  sql.Int,          limit)
       .input('offset', sql.Int,          offset)
       .query(`
-        SELECT TOP (@limit)
+        SELECT
           id, action_type, entity_type, entity_ref,
           description, user_name, user_email,
           ip_address, is_override, occurred_at

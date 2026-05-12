@@ -92,7 +92,7 @@ router.get('/kpis', asyncHandler(async (req, res) => {
 router.get('/activity', asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit) || 10, 50));
 
   const rows = await pool.request()
     .input('org_id', sql.Int, orgId)
@@ -134,7 +134,7 @@ router.get('/activity', asyncHandler(async (req, res) => {
 router.get('/documents', asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  const limit = Math.max(1, Math.min(parseInt(req.query.limit) || 10, 50));
 
   const rows = await pool.request()
     .input('org_id', sql.Int, orgId)
