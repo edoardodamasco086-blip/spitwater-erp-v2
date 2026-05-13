@@ -698,7 +698,7 @@ function DeterminationTab() {
             </tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text-sub)' }}>Loading…</td></tr>
-              : rows.length === 0 ? <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text-sub)' }}>No determination rows. Add at least BSX (inventory) and WRX (GR/IR) to enable receiving.</td></tr>
+              : rows.length === 0 ? <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: 'var(--text-sub)' }}>No determination rows. Add at least BSX (inventory) and WRX (GR/IR) to enable inbound deliveries.</td></tr>
               : rows.map(r => (
                 <tr key={r.id} onMouseEnter={e => e.currentTarget.style.background = 'var(--hover, rgba(255,255,255,0.03))'} onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <td style={{ ...td, fontFamily: 'DM Mono', fontWeight: 700, fontSize: 12, color: 'var(--accent)' }}>{r.transaction_key}</td>

@@ -28,7 +28,9 @@ import StockReportsPage     from './pages/warehouse/StockReportsPage';
 import MovementsReportPage  from './pages/warehouse/MovementsReportPage';
 import InventoryLevelsPage  from './pages/warehouse/InventoryLevelsPage';
 import AccountingPage       from './pages/accounting/AccountingPage';
-import ReceivingPage        from './pages/receiving/ReceivingPage';
+import WmsInboundPage      from './pages/wms/WmsInboundPage';
+import P2PPage             from './pages/p2p/P2PPage';
+import O2CPage             from './pages/o2c/O2CPage';
 
 // ── Route guards ───────────────────────────────────────────────
 function RequireAuth({ children }) {
@@ -88,7 +90,10 @@ export default function App() {
         <Route path="movements"         element={<MovementsReportPage />} />
         <Route path="inventory"         element={<InventoryLevelsPage />} />
         <Route path="accounting"        element={<AccountingPage />} />
-        <Route path="receiving"         element={<RequireAdmin><ReceivingPage /></RequireAdmin>} />
+        <Route path="receiving"         element={<Navigate to="/wms/inbound" replace />} />
+        <Route path="wms/inbound"       element={<RequireAdmin><WmsInboundPage /></RequireAdmin>} />
+        <Route path="p2p"               element={<RequireAdmin><P2PPage /></RequireAdmin>} />
+        <Route path="o2c"               element={<RequireAdmin><O2CPage /></RequireAdmin>} />
         <Route path="admin/products/categories"    element={<RequireAdmin><CategoryManager /></RequireAdmin>} />
         <Route path="admin/products/custom-fields" element={<RequireAdmin><CustomFieldManager /></RequireAdmin>} />
         <Route path="admin/products/uom"           element={<RequireAdmin><UomManager /></RequireAdmin>} />

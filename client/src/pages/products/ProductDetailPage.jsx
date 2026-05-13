@@ -263,7 +263,6 @@ export default function ProductDetailPage() {
         price_list_id: p.price_list_id,
         unit_price:    p.unit_price,
         min_qty:       p.min_qty || 1,
-        discount_pct:  p.discount_pct || 0,
       })));
       setSuccess('Pricing saved.');
       setTimeout(() => setSuccess(''), 3000);
@@ -1202,7 +1201,7 @@ function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions,
           <div>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Sales Pricing</div>
             <div style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 2 }}>
-              Prices per price list. Each price list can have multiple rows for different UOMs or quantity breaks.
+              Base price per price list and UOM. Customer-specific discounts and volume breaks are configured in <strong>O2C → Pricing Conditions</strong>.
             </div>
           </div>
           <button className="btn btn-primary btn-sm" onClick={onSavePricing} disabled={saving}>
@@ -1225,7 +1224,6 @@ function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions,
                   <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)' }}>Currency</th>
                   <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)' }}>Unit Price</th>
                   <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)' }}>Min Qty</th>
-                  <th style={{ padding: '8px 14px', textAlign: 'left', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)' }}>Discount %</th>
                 </tr>
               </thead>
               <tbody>
@@ -1260,11 +1258,6 @@ function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions,
                       <input style={{ width: 70, fontFamily: 'DM Mono', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 13 }}
                         type="number" step="0.0001" min="1" value={p.min_qty || 1}
                         onChange={e => { const v=[...pricing]; v[i]={...v[i],min_qty:parseFloat(e.target.value)||1}; setPricing(v); }} />
-                    </td>
-                    <td style={{ padding: '8px 14px' }}>
-                      <input style={{ width: 70, fontFamily: 'DM Mono', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 13 }}
-                        type="number" step="0.01" min="0" max="100" value={p.discount_pct || 0}
-                        onChange={e => { const v=[...pricing]; v[i]={...v[i],discount_pct:parseFloat(e.target.value)||0}; setPricing(v); }} />
                     </td>
                   </tr>
                 ))}

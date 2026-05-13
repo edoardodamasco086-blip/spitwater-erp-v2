@@ -137,24 +137,7 @@ export default function DashboardShell() {
           <div className={styles.navDivider} />
 
           <NavSection label="Sales" collapsed={collapsed}>
-            <NavItemGroup
-              icon={<QuoteIcon />} label="Quotes"
-              collapsed={collapsed} id="quotes"
-              open={openSubs.quotes} onToggle={() => toggleSub('quotes')}
-            >
-              <SubItem label="All Quotes" />
-              <SubItem label="New Quote" />
-              <SubItem label="Awaiting Approval" />
-            </NavItemGroup>
-            <NavItemGroup
-              icon={<OrderIcon />} label="Sales Orders"
-              collapsed={collapsed} id="orders"
-              open={openSubs.orders} onToggle={() => toggleSub('orders')}
-            >
-              <SubItem label="All Orders" />
-              <SubItem label="Back Orders" />
-              <SubItem label="Dealer Orders" />
-            </NavItemGroup>
+            <NavItem to="/o2c" icon={<QuoteIcon />}   label="Order-to-Cash"  collapsed={collapsed} />
             <NavItem to="/invoices" icon={<InvoiceIcon />} label="Invoices" collapsed={collapsed} />
             <NavItem to="/credit-notes" icon={<CreditIcon />} label="Credit Notes" collapsed={collapsed} />
           </NavSection>
@@ -165,8 +148,8 @@ export default function DashboardShell() {
             <NavItem to="/products"   icon={<ProductIcon />} label="Products"          collapsed={collapsed} />
             <NavItem to="/inventory"  icon={<BoxIcon />}      label="Inventory"         collapsed={collapsed} />
             <NavItem to="/movements"  icon={<HistoryIcon />}  label="Movement History"  collapsed={collapsed} />
-            <NavItem to="/receiving"  icon={<TruckIcon />}    label="Goods Receiving"   collapsed={collapsed} />
-            <NavItem to="/purchasing" icon={<CartIcon />}     label="Purchasing"        collapsed={collapsed} />
+            <NavItem to="/wms/inbound" icon={<ScanIcon />}   label="Goods Receiving"   collapsed={collapsed} />
+            <NavItem to="/p2p"        icon={<CartIcon />}     label="Procure-to-Pay"    collapsed={collapsed} />
             <NavItem to="/service"    icon={<WrenchIcon />}   label="Service Jobs"      collapsed={collapsed} />
           </NavSection>
 
@@ -334,3 +317,4 @@ function TierIcon() { return ic(<><path d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 
 function ListIcon() { return ic(<><line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/></>); }
 function FxIcon()    { return ic(<><line x1='12' y1='1' x2='12' y2='23'/><path d='M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></>); }
 function TruckIcon() { return ic(<><rect x='1' y='3' width='15' height='13' rx='2'/><polygon points='16 8 20 8 23 11 23 16 16 16 16 8'/><circle cx='5.5' cy='18.5' r='2.5'/><circle cx='18.5' cy='18.5' r='2.5'/></>); }
+function ScanIcon()  { return ic(<><rect x='2' y='2' width='7' height='7' rx='1'/><rect x='15' y='2' width='7' height='7' rx='1'/><rect x='2' y='15' width='7' height='7' rx='1'/><line x1='15' y1='15' x2='22' y2='15'/><line x1='22' y1='15' x2='22' y2='22'/><line x1='15' y1='22' x2='22' y2='22'/></>); }

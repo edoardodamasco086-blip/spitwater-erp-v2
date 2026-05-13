@@ -119,71 +119,6 @@ const migrations = [
     `,
   },
 
-  // ── receiving_sessions: add missing columns ───────────────────
-
-  {
-    label: 'receiving_sessions: add bin_id',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_sessions' AND COLUMN_NAME='bin_id')
-        ALTER TABLE receiving_sessions ADD bin_id INT NULL
-    `,
-  },
-  {
-    label: 'receiving_sessions: add gl_entry_id',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_sessions' AND COLUMN_NAME='gl_entry_id')
-        ALTER TABLE receiving_sessions ADD gl_entry_id INT NULL
-    `,
-  },
-  {
-    label: 'receiving_sessions: add created_by',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_sessions' AND COLUMN_NAME='created_by')
-        ALTER TABLE receiving_sessions ADD created_by INT NULL
-    `,
-  },
-  {
-    label: 'receiving_sessions: add updated_at',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_sessions' AND COLUMN_NAME='updated_at')
-        ALTER TABLE receiving_sessions ADD updated_at DATETIME NOT NULL DEFAULT GETDATE()
-    `,
-  },
-
-  // ── receiving_session_lines: add missing columns ──────────────
-
-  {
-    label: 'receiving_session_lines: add org_id',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_session_lines' AND COLUMN_NAME='org_id')
-      BEGIN
-        ALTER TABLE receiving_session_lines ADD org_id INT NOT NULL DEFAULT 0;
-        EXEC('UPDATE rsl SET rsl.org_id = rs.org_id FROM receiving_session_lines rsl INNER JOIN receiving_sessions rs ON rs.id = rsl.session_id');
-      END
-    `,
-  },
-  {
-    label: 'receiving_session_lines: add unit_cost',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_session_lines' AND COLUMN_NAME='unit_cost')
-        ALTER TABLE receiving_session_lines ADD unit_cost DECIMAL(18,4) NOT NULL DEFAULT 0
-    `,
-  },
-  {
-    label: 'receiving_session_lines: add landed_cost_per_unit',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_session_lines' AND COLUMN_NAME='landed_cost_per_unit')
-        ALTER TABLE receiving_session_lines ADD landed_cost_per_unit DECIMAL(18,4) NOT NULL DEFAULT 0
-    `,
-  },
-  {
-    label: 'receiving_session_lines: add line_total',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='receiving_session_lines' AND COLUMN_NAME='line_total')
-        ALTER TABLE receiving_session_lines ADD line_total DECIMAL(18,4) NOT NULL DEFAULT 0
-    `,
-  },
-
   // ── Indexes ───────────────────────────────────────────────────
 
   {
@@ -205,20 +140,6 @@ const migrations = [
     sql: `
       IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='ix_jel_account' AND object_id=OBJECT_ID('journal_entry_lines'))
         CREATE INDEX ix_jel_account ON journal_entry_lines (account_id, org_id) INCLUDE (debit, credit)
-    `,
-  },
-  {
-    label: 'index: ix_rs_org_status on receiving_sessions(org_id, status)',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='ix_rs_org_status' AND object_id=OBJECT_ID('receiving_sessions'))
-        CREATE INDEX ix_rs_org_status ON receiving_sessions (org_id, status)
-    `,
-  },
-  {
-    label: 'index: ix_rsl_session on receiving_session_lines(session_id)',
-    sql: `
-      IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='ix_rsl_session' AND object_id=OBJECT_ID('receiving_session_lines'))
-        CREATE INDEX ix_rsl_session ON receiving_session_lines (session_id)
     `,
   },
 ];

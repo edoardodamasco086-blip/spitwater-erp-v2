@@ -38,7 +38,17 @@ const productAssociationsRoutes = require('./routes/product-associations');
 const customFieldsRoutes    = require('./routes/custom-fields');
 const warehouseRoutes       = require('./routes/warehouse');
 const accountingRoutes      = require('./routes/accounting');
-const receivingRoutes       = require('./routes/receiving');
+const wmsInboundRoutes      = require('./routes/wmsInbound');
+const wmsPutawayRulesRoutes = require('./routes/wmsPutawayRules');
+const p2pPRRoutes            = require('./routes/p2pPR');
+const p2pRFQRoutes           = require('./routes/p2pRFQ');
+const p2pPORoutes            = require('./routes/p2pPO');
+const p2pApprovalLevelsRoutes = require('./routes/p2pApprovalLevels');
+const p2pReportsRoutes        = require('./routes/p2pReports');
+const o2cQuotesRoutes         = require('./routes/o2cQuotes');
+const o2cSORoutes             = require('./routes/o2cSO');
+const o2cPricingRoutes        = require('./routes/o2cPricing');
+const o2cOutboundRoutes       = require('./routes/o2cOutbound');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -131,7 +141,17 @@ app.use('/api/products/:id',      productAssociationsRoutes);
 app.use('/api/custom-fields',     customFieldsRoutes);
 app.use('/api/warehouse',         warehouseRoutes);
 app.use('/api/accounting',        accountingRoutes);
-app.use('/api/receiving',         receivingRoutes);
+app.use('/api/wms/inbound',           wmsInboundRoutes);
+app.use('/api/wms/putaway-rules',     wmsPutawayRulesRoutes);
+app.use('/api/p2p/requisitions',      p2pPRRoutes);
+app.use('/api/p2p/rfq',               p2pRFQRoutes);
+app.use('/api/p2p/orders',            p2pPORoutes);
+app.use('/api/p2p/approval-levels',   p2pApprovalLevelsRoutes);
+app.use('/api/p2p/reports',           p2pReportsRoutes);
+app.use('/api/o2c/quotes',            o2cQuotesRoutes);
+app.use('/api/o2c/so',                o2cSORoutes);
+app.use('/api/o2c/pricing',           o2cPricingRoutes);
+app.use('/api/o2c/outbound',          o2cOutboundRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

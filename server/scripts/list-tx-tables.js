@@ -9,7 +9,7 @@ const config = {
 async function run() {
   const pool = await sql.connect(config);
   // Inspect document_lines and documents table
-  for (const t of ['documents', 'document_lines', 'stock_movements', 'stock_reservations', 'receiving_session_lines']) {
+  for (const t of ['documents', 'document_lines', 'stock_movements', 'stock_reservations', 'inbound_deliveries', 'inbound_delivery_items', 'handling_units', 'hu_contents']) {
     try {
       const res = await pool.request().input('t', sql.NVarChar, t).query(`
         SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS

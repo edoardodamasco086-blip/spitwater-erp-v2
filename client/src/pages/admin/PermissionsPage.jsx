@@ -27,6 +27,7 @@ export default function PermissionsPage() {
   const [creating,  setCreating]  = useState(false);
   const [addUserId, setAddUserId] = useState('');
   const [error,     setError]     = useState('');
+  const [resourceSearch, setResourceSearch] = useState('');
 
   const TEAM_COLORS = ['#2F7FE8','#2ECC8A','#E89B2F','#9366E8','#E05252','#3BBCD4','#E84F8C'];
 
@@ -37,7 +38,7 @@ export default function PermissionsPage() {
       permissionsApi.listUsers(),
     ]);
     setTeams(tRes.data.data);
-    setResources(rRes.data.data);
+    setResources([...rRes.data.data].sort((a, b) => a.label.localeCompare(b.label)));
     setAllUsers(uRes.data.data);
     setLoading(false);
   }
@@ -48,6 +49,7 @@ export default function PermissionsPage() {
     setSelectedTeam(team);
     setSaved(false);
     setError('');
+    setResourceSearch('');
 
     const [pRes, mRes] = await Promise.all([
       permissionsApi.getPerms(team.id),
@@ -159,6 +161,9 @@ export default function PermissionsPage() {
 
   const isAdminTeam = selectedTeam?.name === 'Admin' && selectedTeam?.is_system;
   const availableUsers = allUsers.filter(u => !members.find(m => m.id === u.id));
+  const filteredResources = resourceSearch.trim()
+    ? resources.filter(r => r.label.toLowerCase().includes(resourceSearch.toLowerCase()))
+    : resources;
 
   if (loading) return <div className={styles.page}><div style={{display:'flex',alignItems:'center',gap:10,color:'var(--text-sub)'}}><div className="spinner-dark"/>Loading...</div></div>;
 
@@ -276,6 +281,39 @@ export default function PermissionsPage() {
 
                 {saved && <div className={styles.successBox}>Permissions saved successfully.</div>}
 
+                <div style={{ padding: '12px 0 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    className="form-input"
+                    style={{ maxWidth: 260, fontSize: 13 }}
+                    placeholder="Search resources…"
+                    value={resourceSearch}
+                    onChange={e => setResourceSearch(e.target.value)}
+                  />
+                  {resourceSearch && (
+                    <button
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-sub)', fontSize: 18, lineHeight: 1 }}
+                      onClick={() => setResourceSearch('')}>×</button>
+                  )}
+                  <span style={{ fontSize: 12, color: 'var(--text-sub)', marginLeft: 4 }}>
+                    {filteredResources.length} of {resources.length} resources
+                  </span>
+                </div>
+
+                <div className={styles.legend}>
+                  <span className={styles.legendTitle}>Legend:</span>
+                  {[
+                    { key: 'read',   color: 'blue',   desc: 'View records and reports' },
+                    { key: 'write',  color: 'green',  desc: 'Create new records' },
+                    { key: 'update', color: 'orange', desc: 'Edit existing records — also controls approve / reject actions' },
+                    { key: 'delete', color: 'red',    desc: 'Delete or remove items' },
+                  ].map(({ key, color, desc }) => (
+                    <div key={key} className={styles.legendItem}>
+                      <span className={`${styles.actionBadge} ${styles[color]}`}>{key.charAt(0).toUpperCase() + key.slice(1)}</span>
+                      <span className={styles.legendDesc}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+
                 <div className={styles.matrixScroll}>
                   <table className={styles.matrix}>
                     <thead>
@@ -298,7 +336,10 @@ export default function PermissionsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {resources.map(r => {
+                      {filteredResources.length === 0 && (
+                        <tr><td colSpan={6} style={{ padding: '20px 16px', color: 'var(--text-sub)', fontSize: 13, textAlign: 'center' }}>No resources match "{resourceSearch}"</td></tr>
+                      )}
+                      {filteredResources.map(r => {
                         const rp = perms[r.key] || {};
                         const allGranted = isAdminTeam ? true : r.actions.every(a => rp[`can_${a}`]);
                         return (

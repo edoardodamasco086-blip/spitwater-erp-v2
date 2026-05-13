@@ -31,7 +31,30 @@
       "Bash(node ../server/scripts/migrate-accounting-v2.js)",
       "Bash(node ../server/scripts/seed-ato-coa.js)",
       "Bash(npm run *)",
-      "PowerShell(cd c:\\\\Projects\\\\spitwater-erp-v2\\\\server; node scripts/_check_cols.js 2>&1; Write-Host \"Exit: $LASTEXITCODE\")"
+      "PowerShell(cd c:\\\\Projects\\\\spitwater-erp-v2\\\\server; node scripts/_check_cols.js 2>&1; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\" -Name -File | Where-Object { $_.EndsWith\\('.js'\\) } | Head -20)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\" -Name -File | Where-Object { $_.EndsWith\\('.js'\\) } | Select-Object -First 20)",
+      "Bash(xargs grep -l \"products\")",
+      "Bash(xargs grep -l \"CREATE TABLE\\\\|ALTER TABLE\")",
+      "Bash(grep -E \"\\\\.js$|^d\")",
+      "Bash(xargs grep -l \"receiving\")",
+      "Bash(xargs grep -l \"receiving\\\\|receiving_session\\\\|receiving_line\")",
+      "Bash(xargs grep -l \"CREATE TABLE receiving_session\")",
+      "Bash(Remove-Item -Force \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\routes\\\\receiving.js\")",
+      "Bash(Remove-Item -Force \"c:\\\\Projects\\\\spitwater-erp-v2\\\\client\\\\src\\\\api\\\\receiving.js\")",
+      "Bash(Remove-Item -Force \"c:\\\\Projects\\\\spitwater-erp-v2\\\\client\\\\src\\\\pages\\\\receiving\\\\ReceivingPage.jsx\")",
+      "Bash(Remove-Item -Force \"c:\\\\Projects\\\\spitwater-erp-v2\\\\client\\\\src\\\\pages\\\\receiving\\\\\" -ErrorAction SilentlyContinue; echo \"done\")",
+      "Bash(Get-ChildItem \"c:\\\\Projects\\\\spitwater-erp-v2\" -Filter \"*.js\" -Depth 1)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(node server/scripts/migrate-p2p.js)",
+      "Bash(node scripts/migrate-p2p.js)",
+      "Bash(node --check routes/p2pRFQ.js)",
+      "Bash(node --check routes/p2pPR.js)",
+      "Bash(node --check routes/p2pReports.js)",
+      "Bash(node scripts/migrate-p2p-permissions.js)",
+      "Bash(node scripts/migrate-o2c.js)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\);const sql=require\\('mssql'\\);const c={server:process.env.DB_SERVER||'localhost',port:parseInt\\(process.env.DB_PORT\\)||1433,database:process.env.DB_DATABASE,options:{encrypt:process.env.DB_ENCRYPT==='true',trustServerCertificate:process.env.DB_TRUST_CERT==='true',enableArithAbort:true}};if\\(process.env.DB_WINDOWS_AUTH==='true'\\)c.options.trustedConnection=true;else{c.user=process.env.DB_USER;c.password=process.env.DB_PASSWORD;}sql.connect\\(c\\).then\\(async p=>{const r=await p.request\\(\\).query\\('SELECT COLUMN_NAME,IS_NULLABLE,COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='+\\\\\"'numbering_series'\\\\\"+' ORDER BY ORDINAL_POSITION'\\);r.recordset.forEach\\(x=>console.log\\(x.IS_NULLABLE,x.COLUMN_DEFAULT||'\\(no default\\)',x.COLUMN_NAME\\)\\);p.close\\(\\);}\\).catch\\(e=>console.error\\(e.message\\)\\);\")",
+      "Bash(node scripts/migrate-o2c-permissions.js)"
     ]
   }
 }

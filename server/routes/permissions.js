@@ -33,9 +33,13 @@ router.use(requireAuth);
 const RESOURCES = [
   { key: 'contacts',        label: 'Contacts',        actions: ['read','write','update','delete'] },
   { key: 'products',        label: 'Products',        actions: ['read','write','update','delete'] },
+  { key: 'customer_quotes', label: 'Customer Quotes',  actions: ['read','write','update','delete'] },
+  { key: 'sales_orders',   label: 'Sales Orders',     actions: ['read','write','update','delete'] },
   { key: 'quotes',          label: 'Quotes',          actions: ['read','write','update','delete'] },
   { key: 'invoices',        label: 'Invoices',        actions: ['read','write','update','delete'] },
   { key: 'credit_notes',    label: 'Credit Notes',    actions: ['read','write','update','delete'] },
+  { key: 'purchase_requisitions', label: 'Purchase Requisitions', actions: ['read','write','update','delete'] },
+  { key: 'rfqs',            label: 'RFQs',            actions: ['read','write','update','delete'] },
   { key: 'purchase_orders', label: 'Purchase Orders', actions: ['read','write','update','delete'] },
   { key: 'goods_receipts',  label: 'Goods Receipts',  actions: ['read','write','update','delete'] },
   { key: 'service_jobs',    label: 'Service Jobs',    actions: ['read','write','update','delete'] },
