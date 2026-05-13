@@ -25,7 +25,7 @@ async function checkCredit({ orgId, customerId, newOrderTotal, pool, sql }) {
     .input('id',     sql.Int, customerId)
     .input('org_id', sql.Int, orgId)
     .query(`
-      SELECT credit_limit, credit_hold, credit_terms, is_gst_registered
+      SELECT credit_limit, credit_hold, credit_terms, gst_registered
       FROM contacts
       WHERE id = @id AND org_id = @org_id
     `);

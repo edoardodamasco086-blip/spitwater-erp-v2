@@ -191,8 +191,8 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
   // Fetch customer GST flag
   const custRes = await pool.request()
     .input('id', sql.Int, q.customer_id)
-    .query('SELECT is_gst_registered FROM contacts WHERE id=@id');
-  const customerGstRegistered = !!custRes.recordset[0]?.is_gst_registered;
+    .query('SELECT gst_registered FROM contacts WHERE id=@id');
+  const customerGstRegistered = !!custRes.recordset[0]?.gst_registered;
 
   // Pricing engine
   const pricing = await calculatePrice({
@@ -267,8 +267,8 @@ router.patch('/:id/items/:iid', perm('update'), asyncHandler(async (req, res) =>
     const item = itemRes.recordset[0];
 
     const custRes = await pool.request().input('id', sql.Int, q.customer_id)
-      .query('SELECT is_gst_registered FROM contacts WHERE id=@id');
-    const gst = !!custRes.recordset[0]?.is_gst_registered;
+      .query('SELECT gst_registered FROM contacts WHERE id=@id');
+    const gst = !!custRes.recordset[0]?.gst_registered;
 
     const pricing = await calculatePrice({
       orgId, productId: item.product_id, customerId: q.customer_id,

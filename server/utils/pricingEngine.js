@@ -4,13 +4,15 @@
 //
 // Hierarchy (SAP SD-style):
 //   1. Base Price       — from price_list_items (customer's assigned list)
-//                         or products.sales_price as fallback
+//                         or products.default_sales_price as fallback
 //   2. Customer Discount— pricing_conditions WHERE condition_type='customer_discount'
-//                         AND customer_id = @customer_id (or NULL = all)
+//                         scoped to: specific product | product's category | all
 //   3. Volume Break     — pricing_conditions WHERE condition_type='volume_break'
 //                         AND min_qty <= @qty < max_qty
 //   4. GST / Tax        — pricing_conditions WHERE condition_type='gst'
-//                         (10% for GST-registered customers in AU)
+//
+// Scope resolution for product/category conditions:
+//   specific product > category match > all products (product_id IS NULL AND category_id IS NULL)
 //
 // Returns: { basePrice, customerDiscountPct, volumeDiscountPct, unitPrice, taxRate, taxAmount, lineTotal }
 // ============================================================
@@ -18,14 +20,14 @@
 /**
  * Calculate price for one line item.
  * @param {object} p
- * @param {number} p.orgId
- * @param {number} p.productId
- * @param {number} p.customerId
+ * @param {number}      p.orgId
+ * @param {number}      p.productId
+ * @param {number|null} p.customerId
  * @param {number|null} p.priceListId   — customer's assigned price list
- * @param {number} p.qty
- * @param {boolean} p.customerGstRegistered
- * @param {object} p.pool
- * @param {object} p.sql
+ * @param {number}      p.qty
+ * @param {boolean}     p.customerGstRegistered
+ * @param {object}      p.pool
+ * @param {object}      p.sql
  * @returns {Promise<PricingResult>}
  */
 async function calculatePrice({ orgId, productId, customerId, priceListId, qty, customerGstRegistered, pool, sql }) {
@@ -44,23 +46,34 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
     if (plRes.recordset.length) basePrice = Number(plRes.recordset[0].unit_price);
   }
 
-  // If no price list hit, fall back to product sales_price
+  // Fall back to product's default sales price
   if (!basePrice) {
     const prodRes = await pool.request()
       .input('id',     sql.Int, productId)
       .input('org_id', sql.Int, orgId)
-      .query(`SELECT default_sales_price FROM products WHERE id=@id AND org_id=@org_id`);
-    if (prodRes.recordset.length) basePrice = Number(prodRes.recordset[0].default_sales_price || 0);
+      .query(`SELECT default_sales_price, category_id FROM products WHERE id=@id AND org_id=@org_id`);
+    if (prodRes.recordset.length) {
+      basePrice = Number(prodRes.recordset[0].default_sales_price || 0);
+    }
   }
+
+  // ── 1b. Resolve product's category for category-scoped conditions ─
+  const catRes = await pool.request()
+    .input('id',     sql.Int, productId)
+    .input('org_id', sql.Int, orgId)
+    .query(`SELECT category_id FROM products WHERE id=@id AND org_id=@org_id`);
+  const productCategoryId = catRes.recordset[0]?.category_id || null;
 
   // ── 2. Load applicable pricing conditions ──────────────────────
   const condRes = await pool.request()
-    .input('org_id',      sql.Int,          orgId)
-    .input('customer_id', sql.Int,          customerId)
-    .input('product_id',  sql.Int,          productId)
-    .input('qty',         sql.Decimal(18,4), Number(qty))
+    .input('org_id',       sql.Int,           orgId)
+    .input('customer_id',  sql.Int,           customerId)
+    .input('product_id',   sql.Int,           productId)
+    .input('category_id',  sql.Int,           productCategoryId)
+    .input('qty',          sql.Decimal(18,4), Number(qty))
     .query(`
-      SELECT condition_type, priority, discount_type, discount_value, tax_rate, min_qty, max_qty
+      SELECT condition_type, priority, discount_type, discount_value, tax_rate,
+             min_qty, max_qty, product_id, category_id, customer_id
       FROM pricing_conditions
       WHERE org_id = @org_id
         AND is_active = 1
@@ -68,15 +81,32 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
         AND (valid_to   IS NULL OR valid_to   >= CAST(GETDATE() AS DATE))
         AND condition_type IN ('customer_discount','volume_break','gst')
         AND (
-              (condition_type = 'customer_discount' AND (customer_id IS NULL OR customer_id = @customer_id)
-               AND (product_id IS NULL OR product_id = @product_id))
+              -- Customer discount: customer scope + product/category scope
+              (condition_type = 'customer_discount'
+               AND (customer_id IS NULL OR customer_id = @customer_id)
+               AND (
+                     product_id  = @product_id                              -- exact product match
+                  OR (product_id IS NULL AND category_id = @category_id)   -- category match
+                  OR (product_id IS NULL AND category_id IS NULL)           -- all products
+               ))
+           -- Volume break: product/category scope + qty range
            OR (condition_type = 'volume_break'
-               AND (product_id IS NULL OR product_id = @product_id)
+               AND (
+                     product_id  = @product_id
+                  OR (product_id IS NULL AND category_id = @category_id)
+                  OR (product_id IS NULL AND category_id IS NULL)
+               )
                AND (min_qty IS NULL OR @qty >= min_qty)
                AND (max_qty IS NULL OR @qty <  max_qty))
+           -- GST: org-wide
            OR (condition_type = 'gst')
         )
-      ORDER BY condition_type, priority ASC
+      ORDER BY condition_type,
+               -- More specific scope wins (product > category > all)
+               CASE WHEN product_id  = @product_id  THEN 0
+                    WHEN category_id = @category_id THEN 1
+                    ELSE 2 END,
+               priority ASC
     `);
 
   const conditions = condRes.recordset;

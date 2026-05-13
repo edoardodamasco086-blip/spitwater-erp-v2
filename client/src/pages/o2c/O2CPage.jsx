@@ -975,7 +975,7 @@ function PricingTab() {
 
   useEffect(() => {
     load();
-    permissionsApi.getMyPerms().then(r => setCanWrite(!!r.data.data?.customer_quotes?.can_write)).catch(() => {});
+    permissionsApi.getMyPerms().then(r => setCanWrite(!!r.data.data?.price_lists?.can_write)).catch(() => {});
   }, [load]);
 
   async function del(id) {
@@ -1006,7 +1006,7 @@ function PricingTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                {['Type', 'Customer', 'Product', 'Min Qty', 'Max Qty', 'Discount / Rate', 'GST Rate', 'Priority', ''].map(h => <th key={h} style={th}>{h}</th>)}
+                {['Type', 'Customer', 'Product / Category', 'Min Qty', 'Max Qty', 'Discount / Rate', 'GST Rate', 'Priority', ''].map(h => <th key={h} style={th}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -1015,8 +1015,14 @@ function PricingTab() {
               {rows.map(r => (
                 <tr key={r.id}>
                   <td style={td}><span style={{ fontWeight: 600 }}>{condLabel(r.condition_type)}</span></td>
-                  <td style={td}>{r.customer_name || (r.customer_id ? `#${r.customer_id}` : 'All')}</td>
-                  <td style={td}>{r.product_name  || (r.product_id  ? `#${r.product_id}`  : 'All')}</td>
+                  <td style={td}>{r.customer_name || (r.customer_id ? `#${r.customer_id}` : <span style={{ color: 'var(--text-sub)' }}>All</span>)}</td>
+                  <td style={td}>
+                    {r.product_name
+                      ? <span>{r.product_name} <span style={{ color: 'var(--text-sub)', fontSize: 11 }}>{r.product_code}</span></span>
+                      : r.category_name
+                        ? <span style={{ color: '#9366E8' }}>cat: {r.category_name}</span>
+                        : <span style={{ color: 'var(--text-sub)' }}>All</span>}
+                  </td>
                   <td style={td}>{r.min_qty ?? '—'}</td>
                   <td style={td}>{r.max_qty ?? '—'}</td>
                   <td style={td}>{r.discount_value != null ? (r.discount_type === 'fixed' ? AUD(r.discount_value) : PCT(r.discount_value)) : '—'}</td>
@@ -1044,11 +1050,16 @@ function PricingTab() {
 }
 
 function PricingCreateModal({ onClose, onCreated }) {
-  const [customers, setCustomers] = useState([]);
-  const [products,  setProducts]  = useState([]);
+  const [customers,   setCustomers]   = useState([]);
+  const [products,    setProducts]    = useState([]);
+  const [categories,  setCategories]  = useState([]);
   const [form, setForm] = useState({
-    condition_type: 'customer_discount', customer_id: '', product_id: '',
-    min_qty: '', max_qty: '', discount_value: '', discount_type: 'percent', tax_rate: '', priority: 10,
+    condition_type: 'customer_discount',
+    customer_id: '', product_id: '', category_id: '',
+    min_qty: '', max_qty: '',
+    discount_value: '', discount_type: 'percent',
+    tax_rate: '', priority: 10,
+    valid_from: '', valid_to: '', notes: '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -1057,73 +1068,176 @@ function PricingCreateModal({ onClose, onCreated }) {
   useEffect(() => {
     contactsApi.list({ type: 'customer', limit: 500 }).then(r => setCustomers(r.data.data || [])).catch(() => {});
     productsApi.list({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => {});
+    productsApi.categories().then(r => setCategories(r.data.data || [])).catch(() => {});
   }, []);
+
+  // When condition type changes, clear fields irrelevant to the new type
+  function setCondType(e) {
+    const t = e.target.value;
+    setForm(f => ({
+      ...f,
+      condition_type: t,
+      // GST has no discounts; customer_discount has no qty range
+      customer_id:   t === 'volume_break' || t === 'gst' ? '' : f.customer_id,
+      min_qty:       t === 'customer_discount' || t === 'gst' ? '' : f.min_qty,
+      max_qty:       t === 'customer_discount' || t === 'gst' ? '' : f.max_qty,
+      discount_value: t === 'gst' ? '' : f.discount_value,
+      tax_rate:      t !== 'gst' ? '' : f.tax_rate,
+    }));
+  }
+
+  // Product and Category are mutually exclusive scope selectors
+  function setProduct(e) {
+    setForm(f => ({ ...f, product_id: e.target.value, category_id: '' }));
+  }
+  function setCategory(e) {
+    setForm(f => ({ ...f, category_id: e.target.value, product_id: '' }));
+  }
+
+  const ct = form.condition_type;
+  const isCustomerDiscount = ct === 'customer_discount';
+  const isVolumeBreak      = ct === 'volume_break';
+  const isGST              = ct === 'gst';
+  const showProductScope   = isCustomerDiscount || isVolumeBreak;
+  const showDiscount       = !isGST;
+  const showQtyRange       = isVolumeBreak;
+  const showCustomer       = isCustomerDiscount;
 
   async function submit(e) {
     e.preventDefault();
+    if (isGST && !form.tax_rate) { setErr('Tax Rate is required for GST type.'); return; }
+    if (showDiscount && !form.discount_value) { setErr('Discount Value is required.'); return; }
     setSaving(true); setErr('');
     try {
       await o2cApi.createPricing({
-        condition_type: form.condition_type,
-        customer_id:   form.customer_id  ? Number(form.customer_id)  : null,
-        product_id:    form.product_id   ? Number(form.product_id)   : null,
-        min_qty:        form.min_qty       ? Number(form.min_qty)       : null,
-        max_qty:        form.max_qty       ? Number(form.max_qty)       : null,
-        discount_value: form.discount_value ? Number(form.discount_value) : 0,
+        condition_type: ct,
+        customer_id:    showCustomer && form.customer_id  ? Number(form.customer_id)  : null,
+        product_id:     showProductScope && form.product_id  ? Number(form.product_id)  : null,
+        category_id:    showProductScope && form.category_id ? Number(form.category_id) : null,
+        min_qty:        showQtyRange && form.min_qty ? Number(form.min_qty) : null,
+        max_qty:        showQtyRange && form.max_qty ? Number(form.max_qty) : null,
+        discount_value: showDiscount ? Number(form.discount_value) : 0,
         discount_type:  form.discount_type || 'percent',
-        tax_rate:       form.tax_rate      ? Number(form.tax_rate)      : 0,
+        tax_rate:       isGST ? Number(form.tax_rate) : 0,
         priority:       Number(form.priority) || 10,
+        valid_from:     form.valid_from || null,
+        valid_to:       form.valid_to   || null,
+        notes:          form.notes      || null,
       });
       onCreated();
     } catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
     finally { setSaving(false); }
   }
 
+  const sectionStyle = { background: 'rgba(47,127,232,0.04)', border: '1px solid rgba(47,127,232,0.12)', borderRadius: 8, padding: '12px 16px', marginBottom: 14 };
+  const sectionLabel = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-sub)', marginBottom: 8 };
+
   return (
-    <Modal onClose={onClose} width={600}>
+    <Modal onClose={onClose} width={620}>
       <ModalHeader title="New Pricing Condition" onClose={onClose} />
       <form onSubmit={submit} style={{ padding: 24 }}>
         <Err msg={err} />
+
+        {/* Condition type */}
         <div style={fg}>
           <label style={label}>Condition Type *</label>
-          <select style={inp} value={form.condition_type} onChange={set('condition_type')}>
+          <select style={inp} value={ct} onChange={setCondType}>
             {COND_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
+          <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 4 }}>
+            {isCustomerDiscount && 'Applies a % or fixed discount to a specific customer (or all customers) for a product, category, or all products.'}
+            {isVolumeBreak      && 'Applies a quantity-based discount when order qty falls within the Min–Max range.'}
+            {isGST              && 'Defines the GST rate applied to taxable sales. Only one GST condition is needed per org.'}
+          </div>
         </div>
-        <Grid cols={2}>
-          <div style={fg}>
-            <label style={label}>Customer (blank = all)</label>
-            <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
-              <option value="">All Customers</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
-            </select>
+
+        {/* WHO section — customer_discount only */}
+        {showCustomer && (
+          <div style={sectionStyle}>
+            <div style={sectionLabel}>Who</div>
+            <div style={fg}>
+              <label style={label}>Customer (blank = all customers)</label>
+              <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
+                <option value="">All Customers</option>
+                {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
+              </select>
+            </div>
           </div>
-          <div style={fg}>
-            <label style={label}>Product (blank = all)</label>
-            <select style={inp} value={form.product_id} onChange={set('product_id')}>
-              <option value="">All Products</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+        )}
+
+        {/* WHAT section — product or category scope */}
+        {showProductScope && (
+          <div style={sectionStyle}>
+            <div style={sectionLabel}>What (scope — pick one or leave both blank for all products)</div>
+            <Grid cols={2}>
+              <div style={fg}>
+                <label style={label}>Specific Product</label>
+                <select style={inp} value={form.product_id} onChange={setProduct}>
+                  <option value="">— None —</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div style={fg}>
+                <label style={label}>OR Category</label>
+                <select style={inp} value={form.category_id} onChange={setCategory} disabled={!!form.product_id}>
+                  <option value="">— None —</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </Grid>
           </div>
-        </Grid>
-        <Grid cols={2}>
-          <div style={fg}><label style={label}>Min Qty</label><input style={inp} type="number" min="0" step="0.01" value={form.min_qty} onChange={set('min_qty')} /></div>
-          <div style={fg}><label style={label}>Max Qty</label><input style={inp} type="number" min="0" step="0.01" value={form.max_qty} onChange={set('max_qty')} /></div>
-        </Grid>
-        <Grid cols={2}>
-          <div style={fg}>
-            <label style={label}>Discount Type</label>
-            <select style={inp} value={form.discount_type} onChange={set('discount_type')}>
-              <option value="percent">Percentage (%)</option>
-              <option value="fixed">Fixed Amount (AUD)</option>
-            </select>
+        )}
+
+        {/* QTY RANGE section — volume_break only */}
+        {showQtyRange && (
+          <div style={sectionStyle}>
+            <div style={sectionLabel}>Quantity Range</div>
+            <Grid cols={2}>
+              <div style={fg}><label style={label}>Min Qty</label><input style={inp} type="number" min="0" step="0.01" placeholder="0" value={form.min_qty} onChange={set('min_qty')} /></div>
+              <div style={fg}><label style={label}>Max Qty (blank = unlimited)</label><input style={inp} type="number" min="0" step="0.01" placeholder="∞" value={form.max_qty} onChange={set('max_qty')} /></div>
+            </Grid>
           </div>
-          <div style={fg}><label style={label}>Discount Value</label><input style={inp} type="number" min="0" step="0.01" value={form.discount_value} onChange={set('discount_value')} /></div>
+        )}
+
+        {/* DISCOUNT section */}
+        {showDiscount && (
+          <div style={sectionStyle}>
+            <div style={sectionLabel}>Discount</div>
+            <Grid cols={2}>
+              <div style={fg}>
+                <label style={label}>Discount Type</label>
+                <select style={inp} value={form.discount_type} onChange={set('discount_type')}>
+                  <option value="percent">Percentage (%)</option>
+                  <option value="fixed">Fixed Amount (AUD)</option>
+                </select>
+              </div>
+              <div style={fg}>
+                <label style={label}>Discount Value *</label>
+                <input style={inp} type="number" min="0" step="0.01" placeholder={form.discount_type === 'percent' ? 'e.g. 10' : 'e.g. 5.00'} value={form.discount_value} onChange={set('discount_value')} />
+              </div>
+            </Grid>
+          </div>
+        )}
+
+        {/* TAX RATE section — GST only */}
+        {isGST && (
+          <div style={sectionStyle}>
+            <div style={sectionLabel}>Tax Rate</div>
+            <div style={{ ...fg, maxWidth: 180 }}>
+              <label style={label}>Tax Rate % *</label>
+              <input style={inp} type="number" min="0" max="100" step="0.01" placeholder="e.g. 10" value={form.tax_rate} onChange={set('tax_rate')} />
+            </div>
+          </div>
+        )}
+
+        {/* Settings row */}
+        <Grid cols={3}>
+          <div style={fg}><label style={label}>Priority</label><input style={inp} type="number" min="1" value={form.priority} onChange={set('priority')} /></div>
+          <div style={fg}><label style={label}>Valid From</label><input style={inp} type="date" value={form.valid_from} onChange={set('valid_from')} /></div>
+          <div style={fg}><label style={label}>Valid To</label><input style={inp} type="date" value={form.valid_to} onChange={set('valid_to')} /></div>
         </Grid>
-        <Grid cols={2}>
-          <div style={{ ...fg, maxWidth: 140 }}><label style={label}>Priority</label><input style={inp} type="number" min="1" value={form.priority} onChange={set('priority')} /></div>
-          <div style={fg}><label style={label}>Tax Rate % (for GST type)</label><input style={inp} type="number" min="0" max="100" step="0.01" value={form.tax_rate} onChange={set('tax_rate')} /></div>
-        </Grid>
+        <div style={fg}><label style={label}>Notes</label><input style={inp} placeholder="Optional" value={form.notes} onChange={set('notes')} /></div>
+
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Condition'}</Btn>

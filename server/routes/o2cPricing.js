@@ -33,12 +33,14 @@ router.get('/', perm('read'), asyncHandler(async (req, res) => {
     .input('type',   sql.VarChar(30),  type)
     .query(`
       SELECT pc.*,
-             c.full_name AS customer_name,
-             p.name      AS product_name,
-             p.product_code
+             c.full_name  AS customer_name,
+             p.name       AS product_name,
+             p.product_code,
+             cat.name     AS category_name
       FROM pricing_conditions pc
-      LEFT JOIN contacts c ON c.id = pc.customer_id
-      LEFT JOIN products  p ON p.id = pc.product_id
+      LEFT JOIN contacts          c   ON c.id   = pc.customer_id
+      LEFT JOIN products          p   ON p.id   = pc.product_id
+      LEFT JOIN product_categories cat ON cat.id = pc.category_id
       WHERE pc.org_id = @org_id
         AND (@type IS NULL OR pc.condition_type = @type)
       ORDER BY pc.condition_type, pc.priority, pc.id
@@ -142,8 +144,8 @@ router.post('/simulate', perm('read'), asyncHandler(async (req, res) => {
   let gst = true;
   if (customer_id) {
     const custRes = await pool.request().input('id', sql.Int, customer_id)
-      .query('SELECT is_gst_registered FROM contacts WHERE id=@id');
-    gst = !!custRes.recordset[0]?.is_gst_registered;
+      .query('SELECT gst_registered FROM contacts WHERE id=@id');
+    gst = !!custRes.recordset[0]?.gst_registered;
   }
 
   const pricing = await calculatePrice({ orgId, productId: product_id, customerId: customer_id || null, priceListId: price_list_id || null, qty, customerGstRegistered: gst, pool, sql });

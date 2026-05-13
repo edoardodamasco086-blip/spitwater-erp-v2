@@ -216,8 +216,8 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
   if (!product_id || !qty_ordered) return res.status(400).json({ success: false, error: 'product_id and qty_ordered required.' });
 
   const custRes = await pool.request().input('id', sql.Int, so.customer_id)
-    .query('SELECT is_gst_registered FROM contacts WHERE id=@id');
-  const gst = !!custRes.recordset[0]?.is_gst_registered;
+    .query('SELECT gst_registered FROM contacts WHERE id=@id');
+  const gst = !!custRes.recordset[0]?.gst_registered;
 
   const pricing = await calculatePrice({
     orgId, productId: product_id, customerId: so.customer_id,
@@ -278,8 +278,8 @@ router.patch('/:id/items/:iid', perm('update'), asyncHandler(async (req, res) =>
     const item = itemRes.recordset[0];
 
     const custRes = await pool.request().input('id', sql.Int, so.customer_id)
-      .query('SELECT is_gst_registered FROM contacts WHERE id=@id');
-    const gst = !!custRes.recordset[0]?.is_gst_registered;
+      .query('SELECT gst_registered FROM contacts WHERE id=@id');
+    const gst = !!custRes.recordset[0]?.gst_registered;
 
     const pricing = await calculatePrice({
       orgId, productId: item.product_id, customerId: so.customer_id,
