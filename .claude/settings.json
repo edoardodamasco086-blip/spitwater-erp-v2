@@ -54,7 +54,8 @@
       "Bash(node scripts/migrate-p2p-permissions.js)",
       "Bash(node scripts/migrate-o2c.js)",
       "Bash(node -e \"require\\('dotenv'\\).config\\(\\);const sql=require\\('mssql'\\);const c={server:process.env.DB_SERVER||'localhost',port:parseInt\\(process.env.DB_PORT\\)||1433,database:process.env.DB_DATABASE,options:{encrypt:process.env.DB_ENCRYPT==='true',trustServerCertificate:process.env.DB_TRUST_CERT==='true',enableArithAbort:true}};if\\(process.env.DB_WINDOWS_AUTH==='true'\\)c.options.trustedConnection=true;else{c.user=process.env.DB_USER;c.password=process.env.DB_PASSWORD;}sql.connect\\(c\\).then\\(async p=>{const r=await p.request\\(\\).query\\('SELECT COLUMN_NAME,IS_NULLABLE,COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='+\\\\\"'numbering_series'\\\\\"+' ORDER BY ORDINAL_POSITION'\\);r.recordset.forEach\\(x=>console.log\\(x.IS_NULLABLE,x.COLUMN_DEFAULT||'\\(no default\\)',x.COLUMN_NAME\\)\\);p.close\\(\\);}\\).catch\\(e=>console.error\\(e.message\\)\\);\")",
-      "Bash(node scripts/migrate-o2c-permissions.js)"
+      "Bash(node scripts/migrate-o2c-permissions.js)",
+      "Bash(node server/scripts/migrate-cleanup.js)"
     ]
   }
 }

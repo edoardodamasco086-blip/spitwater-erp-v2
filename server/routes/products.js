@@ -1396,7 +1396,7 @@ router.get('/:id/pricing', requirePermission('products','read'), asyncHandler(as
       .input('org_id',     sql.Int, orgId)
       .query(`
         SELECT pli.id, pli.price_list_id, pl.name AS price_list_name,
-               pli.unit_price, pli.min_qty, pli.discount_pct, pli.valid_from, pli.valid_to
+               pli.unit_price, pli.min_qty, pli.valid_from, pli.valid_to
         FROM price_list_items pli
         INNER JOIN price_lists pl ON pl.id = pli.price_list_id
         WHERE pli.product_id = @product_id AND pl.org_id = @org_id
@@ -1414,7 +1414,7 @@ router.get('/:id/pricing', requirePermission('products','read'), asyncHandler(as
     price_list_type: pl.price_list_type,
     is_default:      pl.is_default,
     is_tax_inclusive: pl.is_tax_inclusive,
-    ...(itemMap[pl.id] || { unit_price: null, min_qty: 1, discount_pct: 0 }),
+    ...(itemMap[pl.id] || { unit_price: null, min_qty: 1 }),
   }));
 
   return res.json({ success: true, data: pricing });
@@ -1424,7 +1424,7 @@ router.get('/:id/pricing', requirePermission('products','read'), asyncHandler(as
 router.put('/:id/pricing', requirePermission('products','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const productId = parseInt(req.params.id);
-  const { prices } = req.body; // [{ price_list_id, unit_price, min_qty, discount_pct }]
+  const { prices } = req.body; // [{ price_list_id, unit_price, min_qty }]
 
   if (!Array.isArray(prices)) return res.status(400).json({ success: false, error: 'prices array required.' });
 
@@ -1443,14 +1443,13 @@ router.put('/:id/pricing', requirePermission('products','update'), asyncHandler(
         .input('product_id',    sql.Int,           productId)
         .input('unit_price',    sql.Decimal(18,4), parseFloat(entry.unit_price) || 0)
         .input('min_qty',       sql.Decimal(18,4), parseFloat(entry.min_qty)    || 1)
-        .input('discount_pct',  sql.Decimal(5,2),  parseFloat(entry.discount_pct) || 0)
         .query(`
           IF EXISTS (SELECT 1 FROM price_list_items WHERE price_list_id=@price_list_id AND product_id=@product_id)
-            UPDATE price_list_items SET unit_price=@unit_price, min_qty=@min_qty, discount_pct=@discount_pct
+            UPDATE price_list_items SET unit_price=@unit_price, min_qty=@min_qty
             WHERE price_list_id=@price_list_id AND product_id=@product_id
           ELSE
-            INSERT INTO price_list_items (price_list_id,product_id,unit_price,min_qty,discount_pct)
-            VALUES (@price_list_id,@product_id,@unit_price,@min_qty,@discount_pct)
+            INSERT INTO price_list_items (price_list_id,product_id,unit_price,min_qty)
+            VALUES (@price_list_id,@product_id,@unit_price,@min_qty)
         `);
     })
   );

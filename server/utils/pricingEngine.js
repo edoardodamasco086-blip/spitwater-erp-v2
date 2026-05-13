@@ -49,8 +49,8 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
     const prodRes = await pool.request()
       .input('id',     sql.Int, productId)
       .input('org_id', sql.Int, orgId)
-      .query(`SELECT sales_price FROM products WHERE id=@id AND org_id=@org_id`);
-    if (prodRes.recordset.length) basePrice = Number(prodRes.recordset[0].sales_price || 0);
+      .query(`SELECT default_sales_price FROM products WHERE id=@id AND org_id=@org_id`);
+    if (prodRes.recordset.length) basePrice = Number(prodRes.recordset[0].default_sales_price || 0);
   }
 
   // ── 2. Load applicable pricing conditions ──────────────────────
