@@ -4,6 +4,7 @@ import { contactsApi }    from '../../api/contacts';
 import { productsApi }    from '../../api/products';
 import { permissionsApi } from '../../api/permissions';
 import { dashboardApi }   from '../../api/dashboard';
+import { settingsApi }    from '../../api/settings';
 
 // ── Formatters ────────────────────────────────────────────────
 const AUD  = v => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(v ?? 0);
@@ -498,21 +499,27 @@ function SOsTab({ drillId, onDrillClear }) {
 }
 
 function SOCreateModal({ onClose, onCreated }) {
-  const [customers, setCustomers] = useState([]);
-  const [form, setForm] = useState({ customer_id: '', requested_delivery_date: '', payment_terms: '', notes: '' });
+  const [customers,   setCustomers]  = useState([]);
+  const [warehouses,  setWarehouses] = useState([]);
+  const [form, setForm] = useState({ customer_id: '', warehouse_id: '', requested_delivery_date: '', payment_terms: '', notes: '' });
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
+  const [err,    setErr]    = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
     contactsApi.list({ type: 'customer', limit: 500 }).then(r => setCustomers(r.data.data || [])).catch(() => {});
+    settingsApi.listWarehouses().then(r => setWarehouses(r.data.data || [])).catch(() => {});
   }, []);
 
   async function submit(e) {
     e.preventDefault();
-    if (!form.customer_id) { setErr('Select a customer.'); return; }
+    if (!form.customer_id)  { setErr('Select a customer.'); return; }
+    if (!form.warehouse_id) { setErr('Select a warehouse.'); return; }
     setSaving(true); setErr('');
-    try { await o2cApi.createSO({ ...form, customer_id: Number(form.customer_id) }); onCreated(); }
+    try {
+      await o2cApi.createSO({ ...form, customer_id: Number(form.customer_id), warehouse_id: Number(form.warehouse_id) });
+      onCreated();
+    }
     catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
     finally { setSaving(false); }
   }
@@ -522,13 +529,22 @@ function SOCreateModal({ onClose, onCreated }) {
       <ModalHeader title="New Sales Order" onClose={onClose} />
       <form onSubmit={submit} style={{ padding: 24 }}>
         <Err msg={err} />
-        <div style={fg}>
-          <label style={label}>Customer *</label>
-          <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
-            <option value="">— select —</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
-          </select>
-        </div>
+        <Grid cols={2}>
+          <div style={fg}>
+            <label style={label}>Customer <span style={{ color: '#E05252' }}>*</span></label>
+            <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
+              <option value="">— select —</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
+            </select>
+          </div>
+          <div style={fg}>
+            <label style={label}>Warehouse <span style={{ color: '#E05252' }}>*</span></label>
+            <select style={inp} value={form.warehouse_id} onChange={set('warehouse_id')}>
+              <option value="">— select —</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </div>
+        </Grid>
         <Grid cols={2}>
           <div style={fg}><label style={label}>Requested Delivery</label><input style={inp} type="date" value={form.requested_delivery_date} onChange={set('requested_delivery_date')} /></div>
           <div style={fg}><label style={label}>Payment Terms</label><input style={inp} placeholder="e.g. Net 30" value={form.payment_terms} onChange={set('payment_terms')} /></div>
@@ -544,16 +560,26 @@ function SOCreateModal({ onClose, onCreated }) {
 }
 
 function SODetailModal({ id, onClose }) {
-  const [so,      setSo]      = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err,     setErr]     = useState('');
-  const [products, setProducts] = useState([]);
-  const [newItem, setNewItem] = useState({ product_id: '', qty: 1, price_list_id: '' });
-  const [addingItem, setAddingItem] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [confirmResult, setConfirmResult] = useState(null);
-  const [canWrite, setCanWrite] = useState(false);
-  const [canUpdate, setCanUpdate] = useState(false);
+  const [so,             setSo]            = useState(null);
+  const [loading,        setLoading]       = useState(true);
+  const [err,            setErr]           = useState('');
+  const [products,       setProducts]      = useState([]);
+  const [newItem,        setNewItem]       = useState({ product_id: '', qty: 1, warehouse_id: '', requested_delivery_date: '' });
+  const [addingItem,     setAddingItem]    = useState(false);
+  const [confirming,     setConfirming]    = useState(false);
+  const [confirmResult,  setConfirmResult] = useState(null);
+  const [canWrite,       setCanWrite]      = useState(false);
+  const [canUpdate,      setCanUpdate]     = useState(false);
+  const [headerDateEdit, setHeaderDateEdit]= useState('');
+  const [showCascade,    setShowCascade]   = useState(false);
+  const [pendingCascDate,setPendingCascDate]= useState('');
+  const [lineDelivDates, setLineDelivDates]= useState({});
+  const [togglingLine,   setTogglingLine]  = useState(null);
+  const [warehouses,     setWarehouses]    = useState([]);
+  const [headerWhEdit,   setHeaderWhEdit]  = useState('');
+  const [showWhCascade,  setShowWhCascade] = useState(false);
+  const [pendingCascWh,  setPendingCascWh] = useState('');
+  const [lineWhEdits,    setLineWhEdits]   = useState({});
 
   const load = useCallback(async () => {
     try { const r = await o2cApi.getSO(id); setSo(r.data.data); }
@@ -564,12 +590,32 @@ function SODetailModal({ id, onClose }) {
   useEffect(() => {
     load();
     productsApi.list({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => {});
+    settingsApi.listWarehouses().then(r => setWarehouses(r.data.data || [])).catch(() => {});
     permissionsApi.getMyPerms().then(r => {
       const p = r.data.data?.sales_orders;
       setCanWrite(!!p?.can_write);
       setCanUpdate(!!p?.can_update);
     }).catch(() => {});
   }, [load]);
+
+  useEffect(() => {
+    if (!so) return;
+    setHeaderDateEdit(so.requested_delivery_date ? so.requested_delivery_date.slice(0, 10) : '');
+    setHeaderWhEdit(so.warehouse_id ? String(so.warehouse_id) : '');
+    setLineDelivDates(Object.fromEntries((so.items || []).map(i => [
+      i.id,
+      i.requested_delivery_date ? i.requested_delivery_date.slice(0, 10) : '',
+    ])));
+    setLineWhEdits(Object.fromEntries((so.items || []).map(i => [
+      i.id,
+      i.warehouse_id ? String(i.warehouse_id) : '',
+    ])));
+    setNewItem(n => ({
+      ...n,
+      warehouse_id: so.warehouse_id ? String(so.warehouse_id) : '',
+      requested_delivery_date: so.requested_delivery_date ? so.requested_delivery_date.slice(0, 10) : '',
+    }));
+  }, [so]);
 
   async function act(fn, ...args) {
     setErr(''); setConfirmResult(null);
@@ -594,111 +640,259 @@ function SODetailModal({ id, onClose }) {
     setAddingItem(true); setErr('');
     try {
       await o2cApi.addSOItem(id, {
-        product_id:   Number(newItem.product_id),
-        qty:          Number(newItem.qty) || 1,
-        price_list_id: newItem.price_list_id ? Number(newItem.price_list_id) : null,
+        product_id:             Number(newItem.product_id),
+        qty_ordered:            Number(newItem.qty) || 1,
+        warehouse_id:           newItem.warehouse_id ? Number(newItem.warehouse_id) : null,
+        requested_delivery_date: newItem.requested_delivery_date || null,
       });
-      setNewItem({ product_id: '', qty: 1, price_list_id: '' });
+      setNewItem(n => ({ product_id: '', qty: 1, warehouse_id: n.warehouse_id, requested_delivery_date: n.requested_delivery_date }));
       await load();
     } catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
     finally { setAddingItem(false); }
   }
 
+  async function handleHeaderDateBlur() {
+    const orig = so?.requested_delivery_date ? so.requested_delivery_date.slice(0, 10) : '';
+    if (headerDateEdit === orig) return;
+    setErr('');
+    try {
+      await o2cApi.updateSO(id, { requested_delivery_date: headerDateEdit || null });
+      const hasOpenLines = (so?.items || []).some(i =>
+        i.line_status !== 'closed' && Math.max(0, Number(i.qty_ordered) - Number(i.qty_shipped ?? 0)) > 0
+      );
+      if (hasOpenLines && headerDateEdit) {
+        setPendingCascDate(headerDateEdit);
+        setShowCascade(true);
+      } else {
+        await load();
+      }
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed.'); }
+  }
+
+  async function handleLineDelivBlur(itemId) {
+    const item = so?.items?.find(i => i.id === itemId);
+    const orig = item?.requested_delivery_date ? item.requested_delivery_date.slice(0, 10) : '';
+    const val  = lineDelivDates[itemId] ?? '';
+    if (val === orig) return;
+    setErr('');
+    try {
+      await o2cApi.updateSOItem(id, itemId, { requested_delivery_date: val || null });
+      await load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed.'); }
+  }
+
+  async function handleToggleLineStatus(item) {
+    const next = item.line_status === 'closed' ? 'open' : 'closed';
+    const msg  = next === 'closed'
+      ? `Close line ${item.line_number}? Soft allocations will be released.`
+      : `Re-open line ${item.line_number}?`;
+    if (!window.confirm(msg)) return;
+    setTogglingLine(item.id); setErr('');
+    try {
+      await o2cApi.updateSOItem(id, item.id, { line_status: next });
+      await load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
+    finally { setTogglingLine(null); }
+  }
+
+  async function handleHeaderWhChange(e) {
+    const whId = e.target.value;
+    setHeaderWhEdit(whId);
+    if (!whId) return;
+    setErr('');
+    try {
+      await o2cApi.updateSO(id, { warehouse_id: Number(whId) });
+      const hasOpenLines = (so?.items || []).some(i =>
+        i.line_status !== 'closed' && Math.max(0, Number(i.qty_ordered) - Number(i.qty_shipped ?? 0)) > 0
+      );
+      if (hasOpenLines) { setPendingCascWh(whId); setShowWhCascade(true); }
+      else await load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed.'); }
+  }
+
+  async function handleLineWhChange(itemId, whId) {
+    setLineWhEdits(d => ({ ...d, [itemId]: whId }));
+    if (!whId) return;
+    setErr('');
+    try {
+      await o2cApi.updateSOItem(id, itemId, { warehouse_id: Number(whId) });
+      await load();
+    } catch (ex) { setErr(ex.response?.data?.error || 'Save failed.'); }
+  }
+
   if (loading) return <Modal onClose={onClose}><div style={{ padding: 48, textAlign: 'center', color: 'var(--text-sub)' }}>Loading…</div></Modal>;
 
-  const isDraft  = so?.status === 'draft';
-  const isHold   = so?.status === 'credit_hold';
+  const isDraft    = so?.status === 'draft';
+  const isHold     = so?.status === 'credit_hold';
+  const isTerminal = ['cancelled','shipped','invoiced'].includes(so?.status);
+  const canEditDates = canUpdate && !isTerminal;
+  const ATP_MAP = {
+    available: { label: 'Available', color: '#2ECC8A' },
+    backorder: { label: 'Backorder', color: '#F5A623' },
+    shipped:   { label: 'Shipped',   color: '#9366E8' },
+    picking:   { label: 'Picking',   color: '#2F7FE8' },
+    cancelled: { label: 'Cancelled', color: '#8A95A3' },
+    pending:   { label: 'Pending',   color: '#8A95A3' },
+  };
 
   return (
-    <Modal onClose={onClose} width={1040}>
+    <Modal onClose={onClose} width={1120}>
       <ModalHeader title={`Sales Order ${so?.so_number || ''}`} onClose={onClose} />
       <div style={{ padding: 24 }}>
         <Err msg={err} />
 
-        {/* Credit hold warning */}
         {isHold && (
           <div style={{ background: '#E0525218', border: '1px solid #E05252', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#E05252', fontWeight: 600 }}>
             ⚠ This order is on Credit Hold. Resolve the credit issue and release the hold before shipping.
           </div>
         )}
 
-        {/* Confirm result */}
         {confirmResult && (
           <div style={{ background: '#2ECC8A18', border: '1px solid #2ECC8A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
             <strong style={{ color: '#2ECC8A' }}>Order Confirmed</strong>
-            {confirmResult.delivery_number && <span> · Delivery {confirmResult.delivery_number} created</span>}
-            {confirmResult.schedule_lines && (
+            {confirmResult.data?.delivery_number && <span> · Delivery {confirmResult.data.delivery_number} created</span>}
+            {confirmResult.data?.schedule_lines && (
               <div style={{ marginTop: 6, color: 'var(--text-sub)' }}>
-                {confirmResult.schedule_lines.filter(l => l.atp_category === 'available').length} line(s) available now ·{' '}
-                {confirmResult.schedule_lines.filter(l => l.atp_category === 'backorder').length} line(s) on backorder
+                {confirmResult.data.schedule_lines.filter(l => l.atp_category === 'available').length} line(s) available now ·{' '}
+                {confirmResult.data.schedule_lines.filter(l => l.atp_category === 'backorder').length} line(s) on backorder
               </div>
             )}
           </div>
         )}
 
-        {/* Header */}
         <Section title="Order Details">
           <Grid cols={4}>
-            <KV k="Customer"    v={so?.customer_name} />
-            <KV k="Status"      v={<Pill status={so?.status} map={SO_STATUS} />} />
-            <KV k="Credit"      v={so?.credit_status ? <Pill status={so.credit_status} map={CREDIT_STATUS} /> : '—'} />
-            <KV k="Total"       v={<strong>{AUD(so?.total_value)}</strong>} />
-            <KV k="Created"     v={dt(so?.created_at)} />
-            <KV k="Confirmed"   v={dt(so?.confirmed_at)} />
-            <KV k="Delivery Req." v={dt(so?.requested_delivery_date)} />
-            <KV k="Payment"     v={so?.payment_terms} />
+            <KV k="Customer"  v={so?.customer_name} />
+            <KV k="Status"    v={<Pill status={so?.status} map={SO_STATUS} />} />
+            <KV k="Credit"    v={so?.credit_status ? <Pill status={so.credit_status} map={CREDIT_STATUS} /> : '—'} />
+            <KV k="Total"     v={<strong>{AUD(so?.total_value)}</strong>} />
+            <KV k="Created"   v={dt(so?.created_at)} />
+            <KV k="Confirmed" v={dt(so?.confirmed_at)} />
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>Warehouse <span style={{ color: '#E05252' }}>*</span></div>
+              {canUpdate && !isTerminal ? (
+                <select style={{ ...inp, padding: '4px 8px' }}
+                  value={headerWhEdit}
+                  onChange={handleHeaderWhChange}>
+                  <option value="">— select —</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              ) : (
+                <div style={{ fontSize: 13 }}>{warehouses.find(w => w.id === so?.warehouse_id)?.name || (so?.warehouse_id ? `WH #${so.warehouse_id}` : '—')}</div>
+              )}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>Delivery Req.</div>
+              {canEditDates ? (
+                <input type="date" style={{ ...inp, padding: '4px 8px' }}
+                  value={headerDateEdit}
+                  onChange={e => setHeaderDateEdit(e.target.value)}
+                  onBlur={handleHeaderDateBlur} />
+              ) : (
+                <div style={{ fontSize: 13 }}>{dt(so?.requested_delivery_date)}</div>
+              )}
+            </div>
+            <KV k="Payment" v={so?.payment_terms} />
           </Grid>
         </Section>
 
-        {/* Line Items + Schedule Lines */}
-        <Section title={`Line Items & Schedule Lines (${so?.items?.length ?? so?.line_count ?? 0})`}>
+        <Section title={`Line Items (${so?.items?.length ?? 0})`}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Product', 'Ordered', 'Shipped', 'Unit Price', 'Line Total', 'Schedule Lines', ''].map(h => <th key={h} style={th}>{h}</th>)}
+                  {['#', 'Product', 'Warehouse', 'Del. Req.', 'Ordered', 'Shipped', 'Open', 'Unit Price', 'Line Total', 'Schedule Lines', ''].map(h => (
+                    <th key={h} style={th}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {(!so?.items || !so.items.length) && (
-                  <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--text-sub)' }}>No items.</td></tr>
+                  <tr><td colSpan={11} style={{ ...td, textAlign: 'center', color: 'var(--text-sub)' }}>No items.</td></tr>
                 )}
-                {so?.items?.map(item => (
-                  <tr key={item.id}>
-                    <td style={td}>{item.product_name || item.product_id}</td>
-                    <td style={td}>{item.qty_ordered}</td>
-                    <td style={td}>{item.qty_shipped ?? 0}</td>
-                    <td style={td}>{AUD(item.unit_price)}</td>
-                    <td style={td}><strong>{AUD(item.line_total)}</strong></td>
-                    <td style={td}>
-                      {item.schedule_lines?.length ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          {item.schedule_lines.map(sl => (
-                            <div key={sl.id} style={{ fontSize: 11, display: 'flex', gap: 8, alignItems: 'center' }}>
-                              <span style={{ fontFamily: 'monospace', color: 'var(--text-sub)' }}>#{sl.schedule_line_no}</span>
-                              <span>Qty {sl.qty}</span>
-                              <span style={{ color: 'var(--text-sub)' }}>{dt(sl.confirmed_date)}</span>
-                              <Pill status={sl.atp_category || sl.status || 'pending'} map={{ available: { label: 'Available', color: '#2ECC8A' }, backorder: { label: 'Backorder', color: '#F5A623' }, shipped: { label: 'Shipped', color: '#9366E8' }, pending: { label: 'Pending', color: '#8A95A3' } }} />
-                            </div>
-                          ))}
+                {so?.items?.map(item => {
+                  const openQty   = Math.max(0, Number(item.qty_ordered) - Number(item.qty_shipped ?? 0));
+                  const isClosed  = item.line_status === 'closed';
+                  const isZeroQty = openQty === 0 && !isClosed;
+                  const txtColor  = isClosed ? '#C0392B' : isZeroQty ? 'var(--text-sub)' : 'inherit';
+                  return (
+                    <tr key={item.id} style={{ background: isClosed ? '#E0525210' : 'transparent', opacity: isZeroQty ? 0.55 : 1 }}>
+                      <td style={{ ...td, color: txtColor }}>{item.line_number}</td>
+                      <td style={{ ...td, color: txtColor }}>
+                        <div style={{ fontWeight: 500 }}>{item.product_name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-sub)', fontFamily: 'monospace' }}>{item.product_code}</div>
+                        {isClosed && <span style={{ fontSize: 10, color: '#C0392B', fontWeight: 700, letterSpacing: '.06em' }}>CLOSED</span>}
+                      </td>
+                      <td style={td}>
+                        {canUpdate && !isTerminal && !isClosed ? (
+                          <select style={{ ...inp, width: 140, padding: '3px 7px', fontSize: 12 }}
+                            value={lineWhEdits[item.id] ?? ''}
+                            onChange={e => handleLineWhChange(item.id, e.target.value)}>
+                            <option value="">— none —</option>
+                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                          </select>
+                        ) : (
+                          <span style={{ color: txtColor, fontSize: 12 }}>
+                            {warehouses.find(w => String(w.id) === String(item.warehouse_id))?.name || (item.warehouse_id ? `#${item.warehouse_id}` : '—')}
+                          </span>
+                        )}
+                      </td>
+                      <td style={td}>
+                        {canEditDates && !isClosed ? (
+                          <input type="date"
+                            style={{ ...inp, width: 130, padding: '3px 7px', fontSize: 12 }}
+                            value={lineDelivDates[item.id] ?? ''}
+                            onChange={e => setLineDelivDates(d => ({ ...d, [item.id]: e.target.value }))}
+                            onBlur={() => handleLineDelivBlur(item.id)}
+                          />
+                        ) : (
+                          <span style={{ color: txtColor }}>{dt(item.requested_delivery_date)}</span>
+                        )}
+                      </td>
+                      <td style={{ ...td, color: txtColor }}>{item.qty_ordered}</td>
+                      <td style={{ ...td, color: txtColor }}>{item.qty_shipped ?? 0}</td>
+                      <td style={{ ...td, color: txtColor, fontWeight: openQty > 0 ? 600 : 400 }}>{openQty}</td>
+                      <td style={{ ...td, color: txtColor }}>{AUD(item.unit_price)}</td>
+                      <td style={{ ...td, color: txtColor }}><strong>{AUD(item.line_total)}</strong></td>
+                      <td style={td}>
+                        {item.schedule_lines?.length ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {item.schedule_lines.map(sl => (
+                              <div key={sl.id} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ fontFamily: 'monospace', color: 'var(--text-sub)' }}>#{sl.schedule_line_no}</span>
+                                <span>Qty {sl.qty}</span>
+                                <span style={{ color: 'var(--text-sub)' }}>{dt(sl.confirmed_date)}</span>
+                                <Pill status={sl.atp_category || sl.status || 'pending'} map={ATP_MAP} />
+                              </div>
+                            ))}
+                          </div>
+                        ) : <span style={{ color: 'var(--text-sub)', fontSize: 12 }}>—</span>}
+                      </td>
+                      <td style={td}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                          {isDraft && canWrite && (
+                            <button onClick={() => act(o2cApi.deleteSOItem, id, item.id)}
+                              style={{ background: 'none', border: 'none', color: '#E05252', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                              Remove
+                            </button>
+                          )}
+                          {!isDraft && canUpdate && !isTerminal && (
+                            <button disabled={togglingLine === item.id}
+                              onClick={() => handleToggleLineStatus(item)}
+                              style={{ background: 'none', border: 'none', color: isClosed ? '#2ECC8A' : '#E05252', cursor: 'pointer', fontSize: 12, padding: 0 }}>
+                              {togglingLine === item.id ? '…' : isClosed ? 'Open' : 'Close'}
+                            </button>
+                          )}
                         </div>
-                      ) : <span style={{ color: 'var(--text-sub)', fontSize: 12 }}>Confirm to generate</span>}
-                    </td>
-                    <td style={td}>
-                      {isDraft && canWrite && (
-                        <button onClick={() => act(o2cApi.deleteSOItem, id, item.id)}
-                          style={{ background: 'none', border: 'none', color: '#E05252', cursor: 'pointer', fontSize: 13 }}>
-                          Remove
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
               {so?.items?.length > 0 && (
                 <tfoot>
                   <tr>
-                    <td colSpan={4} style={{ ...td, textAlign: 'right', fontWeight: 600, color: 'var(--text-sub)', fontSize: 12 }}>TOTAL</td>
+                    <td colSpan={8} style={{ ...td, textAlign: 'right', fontWeight: 600, color: 'var(--text-sub)', fontSize: 12 }}>TOTAL</td>
                     <td style={{ ...td, fontWeight: 700 }}>{AUD(so?.total_value)}</td>
                     <td colSpan={2} />
                   </tr>
@@ -708,17 +902,28 @@ function SODetailModal({ id, onClose }) {
           </div>
 
           {isDraft && canWrite && (
-            <form onSubmit={addItem} style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div style={{ flex: '2 1 200px' }}>
-                <label style={label}>Product</label>
+            <form onSubmit={addItem} style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', padding: '12px 0', borderTop: '1px dashed var(--border)' }}>
+              <div style={{ flex: '2 1 180px' }}>
+                <label style={label}>Product <span style={{ color: '#E05252' }}>*</span></label>
                 <select style={inp} value={newItem.product_id} onChange={e => setNewItem(n => ({ ...n, product_id: e.target.value }))}>
-                  <option value="">— select product —</option>
+                  <option value="">— select —</option>
                   {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.product_code})</option>)}
                 </select>
               </div>
-              <div style={{ flex: '0 0 90px' }}>
-                <label style={label}>Qty</label>
+              <div style={{ flex: '1 1 140px' }}>
+                <label style={label}>Warehouse <span style={{ color: '#E05252' }}>*</span></label>
+                <select style={inp} value={newItem.warehouse_id} onChange={e => setNewItem(n => ({ ...n, warehouse_id: e.target.value }))}>
+                  <option value="">— select —</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '0 0 80px' }}>
+                <label style={label}>Qty <span style={{ color: '#E05252' }}>*</span></label>
                 <input style={inp} type="number" min="0.01" step="0.01" value={newItem.qty} onChange={e => setNewItem(n => ({ ...n, qty: e.target.value }))} />
+              </div>
+              <div style={{ flex: '0 0 140px' }}>
+                <label style={label}>Del. Req.</label>
+                <input style={inp} type="date" value={newItem.requested_delivery_date} onChange={e => setNewItem(n => ({ ...n, requested_delivery_date: e.target.value }))} />
               </div>
               <div>
                 <label style={{ ...label, visibility: 'hidden' }}>.</label>
@@ -728,7 +933,6 @@ function SODetailModal({ id, onClose }) {
           )}
         </Section>
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid var(--border)' }}>
           {isDraft && canUpdate && (
             <Btn onClick={handleConfirm} disabled={confirming}>
@@ -738,13 +942,57 @@ function SODetailModal({ id, onClose }) {
           {isHold && canUpdate && (
             <Btn variant="warning" onClick={() => act(o2cApi.releaseHold, id)}>Release Hold</Btn>
           )}
-          {(isDraft || isHold) && canUpdate && (
-            <Btn variant="ghost" onClick={() => { if (window.confirm('Cancel this order?')) act(o2cApi.cancelSO, id); }}>Cancel</Btn>
+          {!isTerminal && canUpdate && (
+            <Btn variant="danger" onClick={() => { if (window.confirm('Cancel this order? This cannot be undone.')) act(o2cApi.cancelSO, id); }}>
+              Cancel Order
+            </Btn>
           )}
           <div style={{ flex: 1 }} />
           <Btn variant="ghost" onClick={onClose}>Close</Btn>
         </div>
       </div>
+
+      {showCascade && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 24, width: 380, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Update Line Delivery Dates?</div>
+            <div style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 20 }}>
+              Also update the delivery date to <strong>{pendingCascDate}</strong> on all open lines with remaining qty?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Btn variant="ghost" onClick={async () => { setShowCascade(false); await load(); }}>No, header only</Btn>
+              <Btn onClick={async () => {
+                setShowCascade(false); setErr('');
+                try { await o2cApi.updateSO(id, { requested_delivery_date: pendingCascDate, cascade_to_lines: true }); }
+                catch (ex) { setErr(ex.response?.data?.error || 'Cascade failed.'); }
+                await load();
+              }}>Yes, update all lines</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWhCascade && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, padding: 24, width: 380, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Update Line Warehouses?</div>
+            <div style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 20 }}>
+              Also update the warehouse to <strong>{warehouses.find(w => String(w.id) === String(pendingCascWh))?.name || `#${pendingCascWh}`}</strong> on all open lines with remaining qty?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Btn variant="ghost" onClick={async () => { setShowWhCascade(false); await load(); }}>No, header only</Btn>
+              <Btn onClick={async () => {
+                setShowWhCascade(false); setErr('');
+                try { await o2cApi.updateSO(id, { warehouse_id: Number(pendingCascWh), cascade_warehouse_to_lines: true }); }
+                catch (ex) { setErr(ex.response?.data?.error || 'Cascade failed.'); }
+                await load();
+              }}>Yes, update all lines</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

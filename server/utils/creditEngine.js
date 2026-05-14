@@ -56,12 +56,12 @@ async function checkCredit({ orgId, customerId, newOrderTotal, pool, sql }) {
         JOIN journal_entry_lines jel ON jel.entry_id = je.id
         JOIN chart_of_accounts coa   ON coa.id = jel.account_id
         WHERE je.org_id = @org_id
-          AND je.contact_id = @customer_id
+          AND jel.contact_id = @customer_id
           AND je.status = 'posted'
           AND coa.account_type = 'accounts_receivable'
-          AND jel.debit_amount > 0
+          AND jel.debit > 0
           AND DATEDIFF(DAY, je.entry_date, GETDATE()) > @due_days
-          AND je.is_reconciled = 0
+          AND je.status != 'reversed'
       `);
     const overdueCount = overdueRes.recordset[0]?.cnt ?? 0;
     if (overdueCount > 0) {
@@ -94,15 +94,15 @@ async function checkCredit({ orgId, customerId, newOrderTotal, pool, sql }) {
       .input('org_id',      sql.Int, orgId)
       .input('customer_id', sql.Int, customerId)
       .query(`
-        SELECT ISNULL(SUM(jel.debit_amount - jel.credit_amount), 0) AS ar_balance
+        SELECT ISNULL(SUM(jel.debit - jel.credit), 0) AS ar_balance
         FROM journal_entries je
         JOIN journal_entry_lines jel ON jel.entry_id = je.id
         JOIN chart_of_accounts coa   ON coa.id = jel.account_id
         WHERE je.org_id = @org_id
-          AND je.contact_id = @customer_id
+          AND jel.contact_id = @customer_id
           AND je.status = 'posted'
           AND coa.account_type = 'accounts_receivable'
-          AND je.is_reconciled = 0
+          AND je.status != 'reversed'
       `);
     const arBalance = Number(arRes.recordset[0]?.ar_balance ?? 0);
 

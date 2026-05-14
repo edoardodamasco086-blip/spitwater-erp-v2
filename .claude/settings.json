@@ -59,7 +59,8 @@
       "Bash(node server/scripts/migrate-o2c-permissions.js)",
       "Bash(Get-Service -Name *SQL*)",
       "Bash(Select-Object Name, Status, DisplayName)",
-      "PowerShell(netstat -ano)"
+      "PowerShell(netstat -ano)",
+      "Bash(node scripts/migrate-so-lines.js)"
     ]
   }
 }

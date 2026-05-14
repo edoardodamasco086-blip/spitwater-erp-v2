@@ -54,7 +54,16 @@ async function publishPickingTask({ soId, orgId, pool, sql }) {
 
   // ── 2. Create outbound delivery header ─────────────────────────
   const { number: deliveryNumber } = await getNextNumber('outbound_delivery', orgId, pool, sql);
-  const warehouseId = so.warehouse_id || availableLines[0]?.item_wh || null;
+
+  // Resolve warehouse: SO header → first item → org default warehouse
+  let warehouseId = so.warehouse_id || availableLines[0]?.item_wh || null;
+  if (!warehouseId) {
+    const whRes = await pool.request()
+      .input('org_id', sql.Int, orgId)
+      .query(`SELECT TOP 1 id FROM warehouses WHERE org_id=@org_id AND is_active=1 ORDER BY id ASC`);
+    warehouseId = whRes.recordset[0]?.id || null;
+  }
+  if (!warehouseId) return { deliveryId: null, deliveryNumber: null }; // no warehouse configured
 
   const delRes = await pool.request()
     .input('org_id',           sql.Int,          orgId)
@@ -76,6 +85,7 @@ async function publishPickingTask({ soId, orgId, pool, sql }) {
   // ── 3. Create picking items + soft-allocate stock ──────────────
   for (const line of availableLines) {
     const itemWh = line.item_wh || warehouseId;
+    if (!itemWh) continue; // still no warehouse — skip this line
 
     // Insert outbound delivery item
     const odiRes = await pool.request()

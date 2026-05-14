@@ -181,25 +181,55 @@ router.patch('/:id', perm('update'), asyncHandler(async (req, res) => {
   const id    = parseId(req.params.id);
   const so    = await getSO(id, orgId);
   if (!so) return res.status(404).json({ success: false, error: 'Sales Order not found.' });
-  if (!['draft','credit_hold'].includes(so.status)) return res.status(409).json({ success: false, error: 'Cannot edit a confirmed SO.' });
+  if (['cancelled','shipped','invoiced'].includes(so.status)) return res.status(409).json({ success: false, error: `Cannot edit a ${so.status} SO.` });
 
-  const { warehouse_id, payment_terms, requested_delivery_date, notes } = req.body;
+  const { warehouse_id, payment_terms, requested_delivery_date, notes, cascade_to_lines, cascade_warehouse_to_lines } = req.body;
+  const isDraft    = ['draft','credit_hold'].includes(so.status);
+  const isTerminal = ['shipped','invoiced','cancelled'].includes(so.status);
+
   await pool.request()
     .input('id',                      sql.Int,           id)
     .input('org_id',                  sql.Int,           orgId)
-    .input('warehouse_id',            sql.Int,           warehouse_id ?? null)
-    .input('payment_terms',           sql.NVarChar(100), payment_terms ?? null)
+    .input('warehouse_id',            sql.Int,           !isTerminal && warehouse_id != null ? Number(warehouse_id) : null)
+    .input('payment_terms',           sql.NVarChar(100), isDraft ? (payment_terms ?? null) : null)
     .input('requested_delivery_date', sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
-    .input('notes',                   sql.NVarChar(1000), notes ?? null)
+    .input('notes',                   sql.NVarChar(1000), isDraft ? (notes ?? null) : null)
     .query(`
       UPDATE sales_orders
-      SET warehouse_id            = COALESCE(@warehouse_id,            warehouse_id),
-          payment_terms           = COALESCE(@payment_terms,           payment_terms),
-          requested_delivery_date = COALESCE(@requested_delivery_date, requested_delivery_date),
-          notes                   = COALESCE(@notes,                   notes),
+      SET warehouse_id            = CASE WHEN @warehouse_id IS NOT NULL THEN @warehouse_id ELSE warehouse_id END,
+          payment_terms           = CASE WHEN @payment_terms IS NOT NULL THEN @payment_terms ELSE payment_terms END,
+          requested_delivery_date = CASE WHEN @requested_delivery_date IS NOT NULL THEN @requested_delivery_date ELSE requested_delivery_date END,
+          notes                   = CASE WHEN @notes IS NOT NULL THEN @notes ELSE notes END,
           updated_at              = GETDATE()
       WHERE id=@id AND org_id=@org_id
     `);
+
+  if (cascade_to_lines && requested_delivery_date) {
+    await pool.request()
+      .input('so_id', sql.Int,  id)
+      .input('date',  sql.Date, new Date(requested_delivery_date))
+      .query(`
+        UPDATE sales_order_items
+        SET requested_delivery_date = @date
+        WHERE so_id = @so_id
+          AND line_status = 'open'
+          AND (qty_ordered - ISNULL(qty_shipped, 0)) > 0
+      `);
+  }
+
+  if (cascade_warehouse_to_lines && warehouse_id) {
+    await pool.request()
+      .input('so_id', sql.Int, id)
+      .input('wh',    sql.Int, Number(warehouse_id))
+      .query(`
+        UPDATE sales_order_items
+        SET warehouse_id = @wh
+        WHERE so_id = @so_id
+          AND line_status = 'open'
+          AND (qty_ordered - ISNULL(qty_shipped, 0)) > 0
+      `);
+  }
+
   res.json({ success: true });
 }));
 
@@ -212,7 +242,7 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
   if (!so) return res.status(404).json({ success: false, error: 'Sales Order not found.' });
   if (!['draft','credit_hold'].includes(so.status)) return res.status(409).json({ success: false, error: 'Cannot add items to this SO.' });
 
-  const { product_id, qty_ordered, warehouse_id, notes } = req.body;
+  const { product_id, qty_ordered, warehouse_id, requested_delivery_date, notes } = req.body;
   if (!product_id || !qty_ordered) return res.status(400).json({ success: false, error: 'product_id and qty_ordered required.' });
 
   const custRes = await pool.request().input('id', sql.Int, so.customer_id)
@@ -229,30 +259,31 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
   const lineNumber = lnRes.recordset[0].next_line;
 
   const r = await pool.request()
-    .input('so_id',                 sql.Int,           soId)
-    .input('org_id',                sql.Int,           orgId)
-    .input('line_number',           sql.Int,           lineNumber)
-    .input('product_id',            sql.Int,           product_id)
-    .input('warehouse_id',          sql.Int,           warehouse_id || so.warehouse_id || null)
-    .input('qty_ordered',           sql.Decimal(18,4), Number(qty_ordered))
-    .input('base_price',            sql.Decimal(18,4), pricing.basePrice)
-    .input('customer_discount_pct', sql.Decimal(5,2),  pricing.customerDiscountPct)
-    .input('volume_discount_pct',   sql.Decimal(5,2),  pricing.volumeDiscountPct)
-    .input('unit_price',            sql.Decimal(18,4), pricing.unitPrice)
-    .input('tax_rate',              sql.Decimal(5,2),  pricing.taxRate)
-    .input('tax_amount',            sql.Decimal(18,4), pricing.taxAmount)
-    .input('line_total',            sql.Decimal(18,4), pricing.lineTotal)
-    .input('notes',                 sql.NVarChar(500), notes || null)
+    .input('so_id',                   sql.Int,           soId)
+    .input('org_id',                  sql.Int,           orgId)
+    .input('line_number',             sql.Int,           lineNumber)
+    .input('product_id',              sql.Int,           product_id)
+    .input('warehouse_id',            sql.Int,           warehouse_id || so.warehouse_id || null)
+    .input('qty_ordered',             sql.Decimal(18,4), Number(qty_ordered))
+    .input('base_price',              sql.Decimal(18,4), pricing.basePrice)
+    .input('customer_discount_pct',   sql.Decimal(5,2),  pricing.customerDiscountPct)
+    .input('volume_discount_pct',     sql.Decimal(5,2),  pricing.volumeDiscountPct)
+    .input('unit_price',              sql.Decimal(18,4), pricing.unitPrice)
+    .input('tax_rate',                sql.Decimal(5,2),  pricing.taxRate)
+    .input('tax_amount',              sql.Decimal(18,4), pricing.taxAmount)
+    .input('line_total',              sql.Decimal(18,4), pricing.lineTotal)
+    .input('requested_delivery_date', sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
+    .input('notes',                   sql.NVarChar(500), notes || null)
     .query(`
       DECLARE @out TABLE (id INT);
       INSERT INTO sales_order_items
         (so_id, org_id, line_number, product_id, warehouse_id, qty_ordered,
          base_price, customer_discount_pct, volume_discount_pct, unit_price,
-         tax_rate, tax_amount, line_total, atp_status, notes)
+         tax_rate, tax_amount, line_total, atp_status, requested_delivery_date, notes)
       OUTPUT INSERTED.id INTO @out
       VALUES (@so_id, @org_id, @line_number, @product_id, @warehouse_id, @qty_ordered,
               @base_price, @customer_discount_pct, @volume_discount_pct, @unit_price,
-              @tax_rate, @tax_amount, @line_total, 'pending', @notes);
+              @tax_rate, @tax_amount, @line_total, 'pending', @requested_delivery_date, @notes);
       SELECT id FROM @out;
     `);
 
@@ -268,24 +299,28 @@ router.patch('/:id/items/:iid', perm('update'), asyncHandler(async (req, res) =>
   const itemId = parseId(req.params.iid);
   const so     = await getSO(soId, orgId);
   if (!so) return res.status(404).json({ success: false, error: 'SO not found.' });
-  if (!['draft','credit_hold'].includes(so.status)) return res.status(409).json({ success: false, error: 'Cannot edit items on a confirmed SO.' });
+  if (['shipped','invoiced','cancelled'].includes(so.status))
+    return res.status(409).json({ success: false, error: `Cannot edit items on a ${so.status} SO.` });
 
-  const { qty_ordered, notes } = req.body;
+  const { qty_ordered, notes, requested_delivery_date, line_status, warehouse_id } = req.body;
+  const isDraftOrHold = ['draft','credit_hold'].includes(so.status);
+  let totalsChanged = false;
+
+  // ── qty_ordered: draft / credit_hold only ─────────────────────
   if (qty_ordered != null) {
+    if (!isDraftOrHold)
+      return res.status(409).json({ success: false, error: 'Cannot change qty on a confirmed SO.' });
     const itemRes = await pool.request().input('id', sql.Int, itemId).input('so_id', sql.Int, soId)
       .query('SELECT * FROM sales_order_items WHERE id=@id AND so_id=@so_id');
     if (!itemRes.recordset.length) return res.status(404).json({ success: false, error: 'Item not found.' });
     const item = itemRes.recordset[0];
-
     const custRes = await pool.request().input('id', sql.Int, so.customer_id)
       .query('SELECT gst_registered FROM contacts WHERE id=@id');
     const gst = !!custRes.recordset[0]?.gst_registered;
-
     const pricing = await calculatePrice({
       orgId, productId: item.product_id, customerId: so.customer_id,
       priceListId: so.price_list_id, qty: qty_ordered, customerGstRegistered: gst, pool, sql,
     });
-
     await pool.request()
       .input('id',                    sql.Int,           itemId)
       .input('so_id',                 sql.Int,           soId)
@@ -306,13 +341,83 @@ router.patch('/:id/items/:iid', perm('update'), asyncHandler(async (req, res) =>
             line_total=@line_total, notes=COALESCE(@notes, notes)
         WHERE id=@id AND so_id=@so_id
       `);
-  } else if (notes != null) {
+    totalsChanged = true;
+  }
+
+  // ── notes only ─────────────────────────────────────────────────
+  if (qty_ordered == null && notes != null) {
     await pool.request().input('id', sql.Int, itemId).input('so_id', sql.Int, soId)
       .input('notes', sql.NVarChar(500), notes)
       .query('UPDATE sales_order_items SET notes=@notes WHERE id=@id AND so_id=@so_id');
   }
 
-  await syncSOTotals(soId, pool);
+  // ── requested_delivery_date: any non-terminal SO ──────────────
+  if (requested_delivery_date !== undefined) {
+    await pool.request()
+      .input('id',    sql.Int,  itemId)
+      .input('so_id', sql.Int,  soId)
+      .input('date',  sql.Date, requested_delivery_date ? new Date(requested_delivery_date) : null)
+      .query('UPDATE sales_order_items SET requested_delivery_date=@date WHERE id=@id AND so_id=@so_id');
+  }
+
+  // ── line_status: open ↔ closed ────────────────────────────────
+  if (line_status != null) {
+    if (!['open','closed'].includes(line_status))
+      return res.status(400).json({ success: false, error: 'line_status must be open or closed.' });
+    await pool.request().input('id', sql.Int, itemId).input('so_id', sql.Int, soId)
+      .input('status', sql.VarChar(20), line_status)
+      .query('UPDATE sales_order_items SET line_status=@status WHERE id=@id AND so_id=@so_id');
+
+    if (line_status === 'closed') {
+      // Release soft allocations for available schedule lines on this item
+      const schedRes = await pool.request()
+        .input('item_id', sql.Int, itemId)
+        .query(`
+          SELECT sl.id, sl.qty, soi.product_id,
+                 COALESCE(soi.warehouse_id, so.warehouse_id) AS warehouse_id
+          FROM sales_order_schedule_lines sl
+          JOIN sales_order_items soi ON soi.id = sl.so_item_id
+          JOIN sales_orders so ON so.id = soi.so_id
+          WHERE sl.so_item_id = @item_id
+            AND sl.atp_category = 'available'
+            AND sl.status IN ('open','picking')
+        `);
+      for (const sched of schedRes.recordset) {
+        if (!sched.warehouse_id) continue;
+        await pool.request()
+          .input('org_id',      sql.Int,           orgId)
+          .input('product_id',  sql.Int,           sched.product_id)
+          .input('warehouse_id',sql.Int,           sched.warehouse_id)
+          .input('qty',         sql.Decimal(18,4), Number(sched.qty))
+          .query(`
+            UPDATE stock_levels
+            SET soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
+                updated_at = GETDATE()
+            WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id
+          `);
+      }
+      await pool.request().input('item_id', sql.Int, itemId).query(`
+        UPDATE outbound_delivery_items SET status='cancelled'
+        WHERE schedule_line_id IN (
+          SELECT id FROM sales_order_schedule_lines WHERE so_item_id=@item_id AND status IN ('open','picking')
+        )
+      `);
+      await pool.request().input('item_id', sql.Int, itemId).query(
+        `UPDATE sales_order_schedule_lines SET status='cancelled' WHERE so_item_id=@item_id AND status IN ('open','picking')`
+      );
+    }
+  }
+
+  // ── warehouse_id: any non-terminal SO ────────────────────────
+  if (warehouse_id !== undefined) {
+    await pool.request()
+      .input('id',    sql.Int, itemId)
+      .input('so_id', sql.Int, soId)
+      .input('wh_id', sql.Int, warehouse_id ? Number(warehouse_id) : null)
+      .query('UPDATE sales_order_items SET warehouse_id=@wh_id WHERE id=@id AND so_id=@so_id');
+  }
+
+  if (totalsChanged) await syncSOTotals(soId, pool);
   res.json({ success: true });
 }));
 
@@ -362,10 +467,19 @@ router.post('/:id/confirm', perm('update'), asyncHandler(async (req, res) => {
     return res.status(402).json({ success: false, credit_hold: true, status: credit.status, reason: credit.reason });
   }
 
+  // Resolve default warehouse once for the whole SO confirmation
+  let defaultWhId = so.warehouse_id;
+  if (!defaultWhId) {
+    const whRes = await pool.request().input('org_id', sql.Int, orgId)
+      .query(`SELECT TOP 1 id FROM warehouses WHERE org_id=@org_id AND is_active=1 ORDER BY id ASC`);
+    defaultWhId = whRes.recordset[0]?.id || null;
+  }
+
   // ── ATP per line item ──────────────────────────────────────
   const allScheduleLines = [];
   for (const item of items.recordset) {
-    const wh  = item.warehouse_id || so.warehouse_id;
+    if (item.line_status === 'closed' || item.line_status === 'cancelled') continue;
+    const wh  = item.warehouse_id || defaultWhId;
     const atp = await runATP({ productId: item.product_id, warehouseId: wh, orgId, qtyRequested: item.qty_ordered, pool, sql });
 
     // Delete any old schedule lines (re-confirm case)
