@@ -30,7 +30,7 @@
  * @param {object}      p.sql
  * @returns {Promise<PricingResult>}
  */
-async function calculatePrice({ orgId, productId, customerId, priceListId, qty, customerGstRegistered, pool, sql }) {
+async function calculatePrice({ orgId, productId, customerId, customerCategoryId, priceListId, qty, customerGstRegistered, pool, sql }) {
   // ── 1. Base Price ──────────────────────────────────────────────
   let basePrice = 0;
 
@@ -46,14 +46,15 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
     if (plRes.recordset.length) basePrice = Number(plRes.recordset[0].unit_price);
   }
 
-  // Fall back to product's default sales price
+  // Fall back to product's retail_price, then default_sales_price
   if (!basePrice) {
     const prodRes = await pool.request()
       .input('id',     sql.Int, productId)
       .input('org_id', sql.Int, orgId)
-      .query(`SELECT default_sales_price, category_id FROM products WHERE id=@id AND org_id=@org_id`);
+      .query(`SELECT retail_price, default_sales_price, category_id FROM products WHERE id=@id AND org_id=@org_id`);
     if (prodRes.recordset.length) {
-      basePrice = Number(prodRes.recordset[0].default_sales_price || 0);
+      const p = prodRes.recordset[0];
+      basePrice = Number(p.retail_price || p.default_sales_price || 0);
     }
   }
 
@@ -66,14 +67,15 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
 
   // ── 2. Load applicable pricing conditions ──────────────────────
   const condRes = await pool.request()
-    .input('org_id',       sql.Int,           orgId)
-    .input('customer_id',  sql.Int,           customerId)
-    .input('product_id',   sql.Int,           productId)
-    .input('category_id',  sql.Int,           productCategoryId)
-    .input('qty',          sql.Decimal(18,4), Number(qty))
+    .input('org_id',               sql.Int,           orgId)
+    .input('customer_id',          sql.Int,           customerId           || null)
+    .input('customer_category_id', sql.Int,           customerCategoryId   || null)
+    .input('product_id',           sql.Int,           productId)
+    .input('category_id',          sql.Int,           productCategoryId)
+    .input('qty',                  sql.Decimal(18,4), Number(qty))
     .query(`
       SELECT condition_type, priority, discount_type, discount_value, tax_rate,
-             min_qty, max_qty, product_id, category_id, customer_id
+             min_qty, max_qty, product_id, category_id, customer_id, customer_category_id
       FROM pricing_conditions
       WHERE org_id = @org_id
         AND is_active = 1
@@ -83,11 +85,16 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
         AND (
               -- Customer discount: customer scope + product/category scope
               (condition_type = 'customer_discount'
-               AND (customer_id IS NULL OR customer_id = @customer_id)
                AND (
-                     product_id  = @product_id                              -- exact product match
-                  OR (product_id IS NULL AND category_id = @category_id)   -- category match
-                  OR (product_id IS NULL AND category_id IS NULL)           -- all products
+                     -- Who matches: specific customer > customer category > all
+                     customer_id = @customer_id
+                  OR (customer_id IS NULL AND customer_category_id = @customer_category_id)
+                  OR (customer_id IS NULL AND customer_category_id IS NULL)
+               )
+               AND (
+                     product_id  = @product_id
+                  OR (product_id IS NULL AND category_id = @category_id)
+                  OR (product_id IS NULL AND category_id IS NULL)
                ))
            -- Volume break: product/category scope + qty range
            OR (condition_type = 'volume_break'
@@ -102,7 +109,11 @@ async function calculatePrice({ orgId, productId, customerId, priceListId, qty, 
            OR (condition_type = 'gst')
         )
       ORDER BY condition_type,
-               -- More specific scope wins (product > category > all)
+               -- Who scope: specific customer > customer category > all
+               CASE WHEN customer_id = @customer_id THEN 0
+                    WHEN customer_category_id = @customer_category_id THEN 1
+                    ELSE 2 END,
+               -- Product scope: specific product > product category > all
                CASE WHEN product_id  = @product_id  THEN 0
                     WHEN category_id = @category_id THEN 1
                     ELSE 2 END,

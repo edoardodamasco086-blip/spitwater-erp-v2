@@ -439,7 +439,7 @@ router.get('/', requirePermission('products','read'), asyncHandler(async (req, r
           p.id, p.product_code, p.barcode, p.name, p.product_type,
           p.category_id, pc.name AS category_name,
           p.can_be_sold, p.can_be_purchased,
-          p.default_sales_price, p.default_purchase_price,
+          p.retail_price, p.default_sales_price, p.default_purchase_price,
           p.last_cost, p.fifo_stock_value,
           p.tracking_type, p.is_active,
           p.warranty_months,
@@ -456,7 +456,7 @@ router.get('/', requirePermission('products','read'), asyncHandler(async (req, r
         GROUP BY
           p.id, p.product_code, p.barcode, p.name, p.product_type,
           p.category_id, pc.name, p.can_be_sold, p.can_be_purchased,
-          p.default_sales_price, p.default_purchase_price,
+          p.retail_price, p.default_sales_price, p.default_purchase_price,
           p.last_cost, p.fifo_stock_value, p.tracking_type, p.is_active,
           p.warranty_months, p.weight_kg, p.primary_image_url,
           uom.code, uom.name, p.min_stock_level, p.created_at, p.updated_at
@@ -759,7 +759,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     .input('id', sql.Int, id).input('org_id', sql.Int, orgId)
     .query(`
       SELECT product_code, name, barcode, description, product_type, category_id,
-             base_uom_id, tracking_type, can_be_sold, default_sales_price,
+             base_uom_id, tracking_type, can_be_sold, retail_price, default_sales_price,
              can_be_purchased, default_purchase_price, preferred_supplier_id,
              supplier_part_number, lead_time_days, min_order_qty, order_multiple,
              min_stock_level, max_stock_level, reorder_qty,
@@ -772,7 +772,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
 
   const {
     barcode, name, description, product_type, category_id,
-    base_uom_id, tracking_type, can_be_sold, default_sales_price,
+    base_uom_id, tracking_type, can_be_sold, retail_price, default_sales_price,
     can_be_purchased, default_purchase_price, preferred_supplier_id,
     supplier_part_number, lead_time_days, min_order_qty, order_multiple,
     min_stock_level, max_stock_level, reorder_qty,
@@ -830,6 +830,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     .input('base_uom_id',               sql.Int,              base_uom_id               || null)
     .input('tracking_type',             sql.VarChar(10),      tracking_type             || null)
     .input('can_be_sold',               sql.Bit,              can_be_sold    != null ? (can_be_sold    ? 1 : 0) : null)
+    .input('retail_price',              sql.Decimal(18,4),    retail_price              ?? null)
     .input('default_sales_price',       sql.Decimal(18,4),    default_sales_price       ?? null)
     .input('can_be_purchased',          sql.Bit,              can_be_purchased != null ? (can_be_purchased ? 1 : 0) : null)
     .input('default_purchase_price',    sql.Decimal(18,4),    default_purchase_price    ?? null)
@@ -859,6 +860,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
         base_uom_id              = COALESCE(@base_uom_id,              base_uom_id),
         tracking_type            = COALESCE(@tracking_type,            tracking_type),
         can_be_sold              = COALESCE(@can_be_sold,              can_be_sold),
+        retail_price             = COALESCE(@retail_price,             retail_price),
         default_sales_price      = COALESCE(@default_sales_price,      default_sales_price),
         can_be_purchased         = COALESCE(@can_be_purchased,         can_be_purchased),
         default_purchase_price   = COALESCE(@default_purchase_price,   default_purchase_price),
@@ -1470,7 +1472,11 @@ router.get('/:id/stock', requirePermission('products','read'), asyncHandler(asyn
       SELECT
         sl.id, sl.warehouse_id, w.name AS warehouse_name, w.code AS warehouse_code,
         sl.qty_on_hand, sl.qty_reserved, sl.qty_on_order,
-        sl.qty_on_hand - sl.qty_reserved AS qty_available,
+        ISNULL(sl.soft_allocated, 0) AS soft_allocated,
+        ISNULL(sl.hard_allocated, 0) AS hard_allocated,
+        CASE WHEN sl.qty_on_hand - ISNULL(sl.soft_allocated,0) - ISNULL(sl.hard_allocated,0) > 0
+             THEN sl.qty_on_hand - ISNULL(sl.soft_allocated,0) - ISNULL(sl.hard_allocated,0)
+             ELSE 0 END AS qty_available,
         sl.updated_at
       FROM stock_levels sl
       INNER JOIN warehouses w ON w.id = sl.warehouse_id

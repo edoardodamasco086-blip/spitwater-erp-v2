@@ -79,7 +79,7 @@ export default function ProductDetailPage() {
   const [form, setForm] = useState({
     name: '', product_code: '', barcode: '', description: '',
     product_type: 'product', category_id: '', base_uom_id: '',
-    tracking_type: 'none', can_be_sold: true, default_sales_price: '',
+    tracking_type: 'none', can_be_sold: true, retail_price: '', default_sales_price: '',
     can_be_purchased: true, default_purchase_price: '',
     preferred_supplier_id: '', supplier_part_number: '',
     lead_time_days: 0, min_order_qty: 1, order_multiple: 1,
@@ -180,6 +180,7 @@ export default function ProductDetailPage() {
         base_uom_id:             p.base_uom_id || '',
         tracking_type:           p.tracking_type || 'none',
         can_be_sold:             !!p.can_be_sold,
+        retail_price:            p.retail_price ?? '',
         default_sales_price:     p.default_sales_price ?? '',
         can_be_purchased:        !!p.can_be_purchased,
         default_purchase_price:  p.default_purchase_price ?? '',
@@ -228,6 +229,7 @@ export default function ProductDetailPage() {
         ...cleaned,
         category_id:             form.category_id            || null,
         base_uom_id:             form.base_uom_id            || null,
+        retail_price:            form.retail_price !== '' ? parseFloat(form.retail_price) : null,
         default_sales_price:     parseFloat(form.default_sales_price)    || 0,
         default_purchase_price:  parseFloat(form.default_purchase_price) || 0,
         min_stock_level:         parseFloat(form.min_stock_level)|| 0,
@@ -541,7 +543,7 @@ export default function ProductDetailPage() {
               {/* Can be sold/purchased flags — kept for document logic */}
               <div className={styles.card}>
                 <div className={styles.cardTitle}>Sales & Purchasing</div>
-                <div style={{display:'flex',gap:24,marginBottom:4}}>
+                <div style={{display:'flex',gap:24,marginBottom:12}}>
                   <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13.5}}>
                     <input type="checkbox" checked={form.can_be_sold} onChange={e => set('can_be_sold', e.target.checked)} style={{accentColor:'var(--accent)',width:15,height:15}} />
                     Can be sold
@@ -551,8 +553,23 @@ export default function ProductDetailPage() {
                     Can be purchased
                   </label>
                 </div>
-                <div style={{fontSize:12,color:'var(--text-sub)',marginTop:6}}>
-                  Pricing is managed per UOM in the <button type="button" className="btn-link" onClick={() => setActiveTab('pricing')}>Pricing tab</button>.
+                <div className={styles.grid2} style={{ marginBottom: 6 }}>
+                  <div className="form-group">
+                    <label className="form-label">Retail Price (RRP)</label>
+                    <input className="form-input" type="number" step="0.0001" min="0"
+                      placeholder="Base retail price"
+                      value={form.retail_price ?? ''}
+                      onChange={e => set('retail_price', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Default Sales Price (fallback)</label>
+                    <input className="form-input" type="number" step="0.0001" min="0"
+                      value={form.default_sales_price}
+                      onChange={e => set('default_sales_price', e.target.value)} />
+                  </div>
+                </div>
+                <div style={{fontSize:12,color:'var(--text-sub)',marginTop:2}}>
+                  Retail Price is used as the base price in the O2C pricing engine. Full price list management is in the <button type="button" className="btn-link" onClick={() => setActiveTab('pricing')}>Pricing tab</button>.
                 </div>
               </div>
 

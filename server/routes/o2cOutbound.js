@@ -152,8 +152,10 @@ router.post('/:id/items/:iid/pick', perm('update'), asyncHandler(async (req, res
   if (!itemRes.recordset.length) return res.status(404).json({ success: false, error: 'Item not found.' });
   const item = itemRes.recordset[0];
 
-  const newPicked = Math.min(Number(item.qty_to_ship), Number(item.qty_picked) + Number(qty_picked));
-  const newStatus = newPicked >= Number(item.qty_to_ship) ? 'picked' : 'picking';
+  const prevPicked = Number(item.qty_picked);
+  const newPicked  = Math.min(Number(item.qty_to_ship), prevPicked + Number(qty_picked));
+  const deltaQty   = newPicked - prevPicked;           // qty actually picked in this call
+  const newStatus  = newPicked >= Number(item.qty_to_ship) ? 'picked' : 'picking';
 
   await pool.request()
     .input('id',            sql.Int,           itemId)
@@ -165,17 +167,34 @@ router.post('/:id/items/:iid/pick', perm('update'), asyncHandler(async (req, res
     .input('picked_at',     sql.DateTime,      newStatus === 'picked' ? new Date() : null)
     .query(`
       UPDATE outbound_delivery_items
-      SET qty_picked=@qty_picked, status=@status,
-          bin_id=COALESCE(@bin_id, bin_id),
-          batch_number=COALESCE(@batch_number, batch_number),
-          serial_number=COALESCE(@serial_number, serial_number),
-          picked_at=COALESCE(@picked_at, picked_at)
-      WHERE id=@id
+      SET qty_picked     = @qty_picked,
+          status         = @status,
+          bin_id         = COALESCE(@bin_id, bin_id),
+          batch_number   = COALESCE(@batch_number, batch_number),
+          serial_number  = COALESCE(@serial_number, serial_number),
+          picked_at      = COALESCE(@picked_at, picked_at)
+      WHERE id = @id
     `);
 
-  // If all items picked, move delivery to 'picked'
+  // Transition stock: soft_allocated → hard_allocated for the picked delta
+  if (deltaQty > 0 && item.warehouse_id) {
+    await pool.request()
+      .input('org_id',      sql.Int,           orgId)
+      .input('product_id',  sql.Int,           item.product_id)
+      .input('warehouse_id',sql.Int,           item.warehouse_id)
+      .input('qty',         sql.Decimal(18,4), deltaQty)
+      .query(`
+        UPDATE stock_levels
+        SET soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
+            hard_allocated = hard_allocated + @qty,
+            updated_at     = GETDATE()
+        WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id
+      `);
+  }
+
+  // If all items picked → advance delivery to 'picked'
   const remaining = await pool.request().input('delivery_id', sql.Int, delivId)
-    .query(`SELECT COUNT(*) AS cnt FROM outbound_delivery_items WHERE delivery_id=@delivery_id AND status NOT IN ('picked','shipped')`);
+    .query(`SELECT COUNT(*) AS cnt FROM outbound_delivery_items WHERE delivery_id=@delivery_id AND status NOT IN ('picked','shipped','cancelled')`);
   if (remaining.recordset[0].cnt === 0) {
     await pool.request().input('id', sql.Int, delivId).input('org_id', sql.Int, orgId)
       .query(`UPDATE outbound_deliveries SET status='picked', updated_at=GETDATE() WHERE id=@id AND org_id=@org_id`);
@@ -211,32 +230,52 @@ router.post('/:id/ship', perm('update'), asyncHandler(async (req, res) => {
       .input('qty_shipped',sql.Decimal(18,4), qtyShipped)
       .query(`UPDATE outbound_delivery_items SET qty_shipped=@qty_shipped, status='shipped' WHERE id=@id`);
 
-    // Deduct from stock_levels (on_hand) and release soft allocation
-    await pool.request()
-      .input('org_id',      sql.Int,           orgId)
-      .input('product_id',  sql.Int,           item.product_id)
-      .input('warehouse_id',sql.Int,           item.warehouse_id)
-      .input('qty',         sql.Decimal(18,4), qtyShipped)
-      .query(`
-        UPDATE stock_levels
-        SET qty_on_hand    = qty_on_hand - @qty,
-            soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
-            updated_at     = GETDATE()
-        WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id
-      `);
+    // Goods Issue: deduct on_hand and release the correct allocation bucket.
+    // If item was physically picked → hard_allocated was set during pick.
+    // If shipped directly (no pick step) → still in soft_allocated.
+    if (item.warehouse_id) {
+      const wasPicked = Number(item.qty_picked) > 0;
+      await pool.request()
+        .input('org_id',      sql.Int,           orgId)
+        .input('product_id',  sql.Int,           item.product_id)
+        .input('warehouse_id',sql.Int,           item.warehouse_id)
+        .input('qty',         sql.Decimal(18,4), qtyShipped)
+        .query(wasPicked
+          ? `UPDATE stock_levels
+             SET qty_on_hand    = qty_on_hand - @qty,
+                 hard_allocated = CASE WHEN hard_allocated >= @qty THEN hard_allocated - @qty ELSE 0 END,
+                 updated_at     = GETDATE()
+             WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id`
+          : `UPDATE stock_levels
+             SET qty_on_hand    = qty_on_hand - @qty,
+                 soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
+                 updated_at     = GETDATE()
+             WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id`
+        );
+    }
 
-    // Log stock movement
-    await pool.request()
-      .input('org_id',      sql.Int,           orgId)
-      .input('product_id',  sql.Int,           item.product_id)
-      .input('warehouse_id',sql.Int,           item.warehouse_id)
-      .input('movement_type',sql.VarChar(20),  'outbound_shipment')
-      .input('qty',          sql.Decimal(18,4),-qtyShipped)
-      .input('ref_id',       sql.Int,           id)
-      .query(`
-        INSERT INTO stock_movements (org_id, product_id, warehouse_id, movement_type, quantity, reference_id, reference_type, created_at)
-        VALUES (@org_id, @product_id, @warehouse_id, @movement_type, @qty, @ref_id, 'outbound_delivery', GETDATE())
-      `);
+    // Log stock movement (dispatch)
+    if (item.warehouse_id) {
+      await pool.request()
+        .input('org_id',        sql.Int,           orgId)
+        .input('product_id',    sql.Int,           item.product_id)
+        .input('warehouse_id',  sql.Int,           item.warehouse_id)
+        .input('movement_type', sql.VarChar(30),   'dispatch')
+        .input('qty',           sql.Decimal(18,4), -qtyShipped)
+        .input('unit_cost',     sql.Decimal(18,4), 0)
+        .input('total_cost',    sql.Decimal(18,4), 0)
+        .input('ref_type',      sql.VarChar(30),   'outbound_delivery')
+        .input('ref_id',        sql.Int,           id)
+        .input('moved_by',      sql.Int,           req.user.userId)
+        .query(`
+          INSERT INTO stock_movements
+            (org_id, product_id, warehouse_id, movement_type, qty,
+             unit_cost, total_cost, reference_type, reference_id, moved_by, moved_at)
+          VALUES
+            (@org_id, @product_id, @warehouse_id, @movement_type, @qty,
+             @unit_cost, @total_cost, @ref_type, @ref_id, @moved_by, GETDATE())
+        `);
+    }
 
     // Update SO item shipped qty
     await pool.request()
@@ -291,25 +330,35 @@ router.post('/:id/cancel', perm('update'), asyncHandler(async (req, res) => {
   if (!odRes.recordset.length) return res.status(404).json({ success: false, error: 'Delivery not found.' });
   if (odRes.recordset[0].status === 'shipped') return res.status(409).json({ success: false, error: 'Cannot cancel a shipped delivery.' });
 
-  // Release soft allocations for items
+  // Release allocations — bucket depends on pick state
   const items = await pool.request().input('delivery_id', sql.Int, id)
-    .query('SELECT * FROM outbound_delivery_items WHERE delivery_id=@delivery_id');
+    .query('SELECT * FROM outbound_delivery_items WHERE delivery_id=@delivery_id AND status != \'cancelled\'');
   for (const item of items.recordset) {
     if (!item.warehouse_id) continue;
+
+    const wasPicked = Number(item.qty_picked) > 0;
+    const releaseQty = wasPicked ? Number(item.qty_picked) : Number(item.qty_to_ship);
+
+    // Release from the bucket that currently holds the allocation
     await pool.request()
       .input('org_id',      sql.Int,           orgId)
       .input('product_id',  sql.Int,           item.product_id)
       .input('warehouse_id',sql.Int,           item.warehouse_id)
-      .input('qty',         sql.Decimal(18,4), Number(item.qty_to_ship))
-      .query(`
-        UPDATE stock_levels
-        SET soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
-            updated_at = GETDATE()
-        WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id
-      `);
+      .input('qty',         sql.Decimal(18,4), releaseQty)
+      .query(wasPicked
+        ? `UPDATE stock_levels
+           SET hard_allocated = CASE WHEN hard_allocated >= @qty THEN hard_allocated - @qty ELSE 0 END,
+               updated_at = GETDATE()
+           WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id`
+        : `UPDATE stock_levels
+           SET soft_allocated = CASE WHEN soft_allocated >= @qty THEN soft_allocated - @qty ELSE 0 END,
+               updated_at = GETDATE()
+           WHERE org_id=@org_id AND product_id=@product_id AND warehouse_id=@warehouse_id`
+      );
+
     if (item.schedule_line_id) {
       await pool.request().input('id', sql.Int, item.schedule_line_id)
-        .query(`UPDATE sales_order_schedule_lines SET status='cancelled', outbound_item_id=NULL WHERE id=@id`);
+        .query(`UPDATE sales_order_schedule_lines SET status='open', outbound_item_id=NULL WHERE id=@id`);
     }
   }
 

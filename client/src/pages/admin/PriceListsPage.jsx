@@ -205,7 +205,8 @@ export default function PriceListsPage() {
               <div>
                 <div className={styles.tierName}>
                   {pl.name}
-                  {pl.is_default && <span className="pill pill-blue" style={{ marginLeft: 6, fontSize: 9 }}>DEFAULT</span>}
+                  {pl.is_base    && <span className="pill pill-green" style={{ marginLeft: 6, fontSize: 9 }}>BASE (RRP)</span>}
+                  {pl.is_default && <span className="pill pill-blue"  style={{ marginLeft: 6, fontSize: 9 }}>DEFAULT</span>}
                 </div>
                 <div className={styles.tierMeta}>
                   <span className={`pill ${TYPE_COLORS[pl.price_list_type] || 'pill-grey'}`} style={{ fontSize: 10, padding: '1px 6px' }}>
@@ -218,7 +219,7 @@ export default function PriceListsPage() {
               </div>
               <div className={styles.tierActions} onClick={e => e.stopPropagation()}>
                 <button className="btn btn-outline btn-sm" onClick={() => startEdit(pl)}>Edit</button>
-                {!pl.is_default && (
+                {!pl.is_default && !pl.is_base && (
                   <button className="btn btn-danger btn-sm" onClick={() => handleDelete(pl)}>Del</button>
                 )}
               </div>
@@ -265,6 +266,7 @@ export default function PriceListsPage() {
                     ['Type',        TYPE_LABELS[selected.price_list_type]],
                     ['Currency',    selected.currency_code],
                     ['Tax incl.',   selected.is_tax_inclusive ? 'Yes' : 'No'],
+                    ['Base (RRP)',   selected.is_base    ? 'Yes — non-deletable' : 'No'],
                     ['Default',     selected.is_default ? 'Yes' : 'No'],
                     ['Valid from',  selected.valid_from ? new Date(selected.valid_from).toLocaleDateString('en-AU') : '—'],
                     ['Valid to',    selected.valid_to   ? new Date(selected.valid_to).toLocaleDateString('en-AU')   : '—'],

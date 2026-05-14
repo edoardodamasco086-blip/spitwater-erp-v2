@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import apiClient from '../../api/client';
 import * as o2cApi from '../../api/o2c';
 import { contactsApi }    from '../../api/contacts';
 import { productsApi }    from '../../api/products';
@@ -501,7 +502,7 @@ function SOsTab({ drillId, onDrillClear }) {
 function SOCreateModal({ onClose, onCreated }) {
   const [customers,   setCustomers]  = useState([]);
   const [warehouses,  setWarehouses] = useState([]);
-  const [form, setForm] = useState({ customer_id: '', warehouse_id: '', requested_delivery_date: '', payment_terms: '', notes: '' });
+  const [form, setForm] = useState({ customer_id: '', warehouse_id: '', requested_delivery_date: '', payment_terms: '', notes: '', is_full_delivery_required: false });
   const [saving, setSaving] = useState(false);
   const [err,    setErr]    = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -517,7 +518,7 @@ function SOCreateModal({ onClose, onCreated }) {
     if (!form.warehouse_id) { setErr('Select a warehouse.'); return; }
     setSaving(true); setErr('');
     try {
-      await o2cApi.createSO({ ...form, customer_id: Number(form.customer_id), warehouse_id: Number(form.warehouse_id) });
+      await o2cApi.createSO({ ...form, customer_id: Number(form.customer_id), warehouse_id: Number(form.warehouse_id), is_full_delivery_required: form.is_full_delivery_required });
       onCreated();
     }
     catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
@@ -550,6 +551,13 @@ function SOCreateModal({ onClose, onCreated }) {
           <div style={fg}><label style={label}>Payment Terms</label><input style={inp} placeholder="e.g. Net 30" value={form.payment_terms} onChange={set('payment_terms')} /></div>
         </Grid>
         <div style={fg}><label style={label}>Notes</label><textarea style={{ ...inp, height: 72, resize: 'vertical' }} value={form.notes} onChange={set('notes')} /></div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 6, border: '1px solid var(--border)', background: form.is_full_delivery_required ? '#F5A62318' : 'transparent', cursor: 'pointer', marginBottom: 12 }}>
+          <input type="checkbox" checked={form.is_full_delivery_required} onChange={e => setForm(f => ({ ...f, is_full_delivery_required: e.target.checked }))} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Full Delivery Required</div>
+            <div style={{ fontSize: 11, color: 'var(--text-sub)' }}>Block shipping until all line items have 100% ATP coverage</div>
+          </div>
+        </label>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
           <Btn type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create SO'}</Btn>
@@ -751,10 +759,16 @@ function SODetailModal({ id, onClose }) {
           <div style={{ background: '#2ECC8A18', border: '1px solid #2ECC8A', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 13 }}>
             <strong style={{ color: '#2ECC8A' }}>Order Confirmed</strong>
             {confirmResult.data?.delivery_number && <span> · Delivery {confirmResult.data.delivery_number} created</span>}
+            {confirmResult.data?.picking_blocked && (
+              <span style={{ marginLeft: 8, padding: '1px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, background: '#F5A62330', color: '#F5A623' }}>
+                Picking Blocked — Full delivery required
+              </span>
+            )}
             {confirmResult.data?.schedule_lines && (
               <div style={{ marginTop: 6, color: 'var(--text-sub)' }}>
                 {confirmResult.data.schedule_lines.filter(l => l.atp_category === 'available').length} line(s) available now ·{' '}
                 {confirmResult.data.schedule_lines.filter(l => l.atp_category === 'backorder').length} line(s) on backorder
+                {confirmResult.data.picking_blocked && ' · Delivery Due List will auto-create picking list when fully covered'}
               </div>
             )}
           </div>
@@ -793,6 +807,34 @@ function SODetailModal({ id, onClose }) {
               )}
             </div>
             <KV k="Payment" v={so?.payment_terms} />
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>Delivery Mode</div>
+              {canUpdate && !isTerminal ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input type="checkbox"
+                    checked={!!so?.is_full_delivery_required}
+                    onChange={async e => {
+                      try {
+                        await o2cApi.updateSO(id, { is_full_delivery_required: e.target.checked });
+                        await load();
+                      } catch (ex) { setErr(ex.response?.data?.error || 'Save failed.'); }
+                    }}
+                  />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: so?.is_full_delivery_required ? '#F5A623' : 'var(--text-sub)' }}>
+                    {so?.is_full_delivery_required ? 'Full delivery only' : 'Partial delivery OK'}
+                  </span>
+                </label>
+              ) : (
+                <span style={{
+                  display: 'inline-block', padding: '2px 9px', borderRadius: 99, fontSize: 11,
+                  fontWeight: 600,
+                  background: so?.is_full_delivery_required ? '#F5A62322' : '#2ECC8A22',
+                  color:      so?.is_full_delivery_required ? '#F5A623'   : '#2ECC8A',
+                }}>
+                  {so?.is_full_delivery_required ? 'Full delivery required' : 'Partial OK'}
+                </span>
+              )}
+            </div>
           </Grid>
         </Section>
 
@@ -1263,7 +1305,17 @@ function PricingTab() {
               {rows.map(r => (
                 <tr key={r.id}>
                   <td style={td}><span style={{ fontWeight: 600 }}>{condLabel(r.condition_type)}</span></td>
-                  <td style={td}>{r.customer_name || (r.customer_id ? `#${r.customer_id}` : <span style={{ color: 'var(--text-sub)' }}>All</span>)}</td>
+                  <td style={td}>
+                    {r.customer_name
+                      ? r.customer_name
+                      : r.customer_category_name
+                        ? <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.customer_category_color || '#2F7FE8', display: 'inline-block' }} />
+                            {r.customer_category_name}
+                          </span>
+                        : r.customer_id ? `#${r.customer_id}`
+                        : <span style={{ color: 'var(--text-sub)' }}>All</span>}
+                  </td>
                   <td style={td}>
                     {r.product_name
                       ? <span>{r.product_name} <span style={{ color: 'var(--text-sub)', fontSize: 11 }}>{r.product_code}</span></span>
@@ -1298,12 +1350,13 @@ function PricingTab() {
 }
 
 function PricingCreateModal({ onClose, onCreated }) {
-  const [customers,   setCustomers]   = useState([]);
-  const [products,    setProducts]    = useState([]);
-  const [categories,  setCategories]  = useState([]);
+  const [customers,          setCustomers]          = useState([]);
+  const [customerCategories, setCustomerCategories] = useState([]);
+  const [products,           setProducts]           = useState([]);
+  const [categories,         setCategories]         = useState([]);
   const [form, setForm] = useState({
     condition_type: 'customer_discount',
-    customer_id: '', product_id: '', category_id: '',
+    customer_id: '', customer_category_id: '', product_id: '', category_id: '',
     min_qty: '', max_qty: '',
     discount_value: '', discount_type: 'percent',
     tax_rate: '', priority: 10,
@@ -1317,16 +1370,16 @@ function PricingCreateModal({ onClose, onCreated }) {
     contactsApi.list({ type: 'customer', limit: 500 }).then(r => setCustomers(r.data.data || [])).catch(() => {});
     productsApi.list({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => {});
     productsApi.categories().then(r => setCategories(r.data.data || [])).catch(() => {});
+    apiClient.get('/api/customer-categories').then(r => setCustomerCategories(r.data.data || [])).catch(() => {});
   }, []);
 
-  // When condition type changes, clear fields irrelevant to the new type
   function setCondType(e) {
     const t = e.target.value;
     setForm(f => ({
       ...f,
       condition_type: t,
-      // GST has no discounts; customer_discount has no qty range
-      customer_id:   t === 'volume_break' || t === 'gst' ? '' : f.customer_id,
+      customer_id:          t === 'volume_break' || t === 'gst' ? '' : f.customer_id,
+      customer_category_id: t === 'volume_break' || t === 'gst' ? '' : f.customer_category_id,
       min_qty:       t === 'customer_discount' || t === 'gst' ? '' : f.min_qty,
       max_qty:       t === 'customer_discount' || t === 'gst' ? '' : f.max_qty,
       discount_value: t === 'gst' ? '' : f.discount_value,
@@ -1334,13 +1387,12 @@ function PricingCreateModal({ onClose, onCreated }) {
     }));
   }
 
-  // Product and Category are mutually exclusive scope selectors
-  function setProduct(e) {
-    setForm(f => ({ ...f, product_id: e.target.value, category_id: '' }));
-  }
-  function setCategory(e) {
-    setForm(f => ({ ...f, category_id: e.target.value, product_id: '' }));
-  }
+  // Customer and customer_category are mutually exclusive
+  function setCustomer(e) { setForm(f => ({ ...f, customer_id: e.target.value, customer_category_id: '' })); }
+  function setCustomerCat(e) { setForm(f => ({ ...f, customer_category_id: e.target.value, customer_id: '' })); }
+
+  function setProduct(e) { setForm(f => ({ ...f, product_id: e.target.value, category_id: '' })); }
+  function setCategory(e) { setForm(f => ({ ...f, category_id: e.target.value, product_id: '' })); }
 
   const ct = form.condition_type;
   const isCustomerDiscount = ct === 'customer_discount';
@@ -1358,19 +1410,20 @@ function PricingCreateModal({ onClose, onCreated }) {
     setSaving(true); setErr('');
     try {
       await o2cApi.createPricing({
-        condition_type: ct,
-        customer_id:    showCustomer && form.customer_id  ? Number(form.customer_id)  : null,
-        product_id:     showProductScope && form.product_id  ? Number(form.product_id)  : null,
-        category_id:    showProductScope && form.category_id ? Number(form.category_id) : null,
-        min_qty:        showQtyRange && form.min_qty ? Number(form.min_qty) : null,
-        max_qty:        showQtyRange && form.max_qty ? Number(form.max_qty) : null,
-        discount_value: showDiscount ? Number(form.discount_value) : 0,
-        discount_type:  form.discount_type || 'percent',
-        tax_rate:       isGST ? Number(form.tax_rate) : 0,
-        priority:       Number(form.priority) || 10,
-        valid_from:     form.valid_from || null,
-        valid_to:       form.valid_to   || null,
-        notes:          form.notes      || null,
+        condition_type:       ct,
+        customer_id:          showCustomer && form.customer_id          ? Number(form.customer_id)          : null,
+        customer_category_id: showCustomer && form.customer_category_id ? Number(form.customer_category_id) : null,
+        product_id:           showProductScope && form.product_id       ? Number(form.product_id)           : null,
+        category_id:          showProductScope && form.category_id      ? Number(form.category_id)          : null,
+        min_qty:              showQtyRange && form.min_qty ? Number(form.min_qty) : null,
+        max_qty:              showQtyRange && form.max_qty ? Number(form.max_qty) : null,
+        discount_value:       showDiscount ? Number(form.discount_value) : 0,
+        discount_type:        form.discount_type || 'percent',
+        tax_rate:             isGST ? Number(form.tax_rate) : 0,
+        priority:             Number(form.priority) || 10,
+        valid_from:           form.valid_from || null,
+        valid_to:             form.valid_to   || null,
+        notes:                form.notes      || null,
       });
       onCreated();
     } catch (ex) { setErr(ex.response?.data?.error || 'Failed.'); }
@@ -1393,7 +1446,7 @@ function PricingCreateModal({ onClose, onCreated }) {
             {COND_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
           <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 4 }}>
-            {isCustomerDiscount && 'Applies a % or fixed discount to a specific customer (or all customers) for a product, category, or all products.'}
+            {isCustomerDiscount && 'Applies a % or fixed discount to a specific customer or customer category for a product, category, or all products.'}
             {isVolumeBreak      && 'Applies a quantity-based discount when order qty falls within the Min–Max range.'}
             {isGST              && 'Defines the GST rate applied to taxable sales. Only one GST condition is needed per org.'}
           </div>
@@ -1402,14 +1455,23 @@ function PricingCreateModal({ onClose, onCreated }) {
         {/* WHO section — customer_discount only */}
         {showCustomer && (
           <div style={sectionStyle}>
-            <div style={sectionLabel}>Who</div>
-            <div style={fg}>
-              <label style={label}>Customer (blank = all customers)</label>
-              <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
-                <option value="">All Customers</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
-              </select>
-            </div>
+            <div style={sectionLabel}>Who (pick one or leave both blank for all customers)</div>
+            <Grid cols={2}>
+              <div style={fg}>
+                <label style={label}>Specific Customer</label>
+                <select style={inp} value={form.customer_id} onChange={setCustomer}>
+                  <option value="">— None —</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
+                </select>
+              </div>
+              <div style={fg}>
+                <label style={label}>OR Customer Category</label>
+                <select style={inp} value={form.customer_category_id} onChange={setCustomerCat} disabled={!!form.customer_id}>
+                  <option value="">— None —</option>
+                  {customerCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </Grid>
           </div>
         )}
 
@@ -1496,17 +1558,19 @@ function PricingCreateModal({ onClose, onCreated }) {
 }
 
 function PriceSimModal({ onClose }) {
-  const [customers, setCustomers] = useState([]);
-  const [products,  setProducts]  = useState([]);
+  const [customers,  setCustomers]  = useState([]);
+  const [products,   setProducts]   = useState([]);
+  const [priceLists, setPriceLists] = useState([]);
   const [form, setForm] = useState({ customer_id: '', product_id: '', qty: 1, price_list_id: '' });
-  const [result, setResult] = useState(null);
+  const [result,  setResult]  = useState(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
+  const [err,     setErr]     = useState('');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
     contactsApi.list({ type: 'customer', limit: 500 }).then(r => setCustomers(r.data.data || [])).catch(() => {});
     productsApi.list({ limit: 500 }).then(r => setProducts(r.data.data || [])).catch(() => {});
+    apiClient.get('/api/price-lists').then(r => setPriceLists(r.data.data || [])).catch(() => {});
   }, []);
 
   async function simulate(e) {
@@ -1515,9 +1579,9 @@ function PriceSimModal({ onClose }) {
     setLoading(true); setErr(''); setResult(null);
     try {
       const r = await o2cApi.simulatePrice({
-        customer_id:  form.customer_id  ? Number(form.customer_id)  : null,
-        product_id:   Number(form.product_id),
-        qty:          Number(form.qty) || 1,
+        customer_id:   form.customer_id   ? Number(form.customer_id)   : null,
+        product_id:    Number(form.product_id),
+        qty:           Number(form.qty) || 1,
         price_list_id: form.price_list_id ? Number(form.price_list_id) : null,
       });
       setResult(r.data.data);
@@ -1534,7 +1598,7 @@ function PriceSimModal({ onClose }) {
           <div style={fg}>
             <label style={label}>Customer</label>
             <select style={inp} value={form.customer_id} onChange={set('customer_id')}>
-              <option value="">Anonymous</option>
+              <option value="">Cash / Anonymous (RRP)</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.full_name || c.name}</option>)}
             </select>
           </div>
@@ -1546,25 +1610,52 @@ function PriceSimModal({ onClose }) {
             </select>
           </div>
         </Grid>
-        <div style={{ ...fg, maxWidth: 140 }}>
-          <label style={label}>Quantity</label>
-          <input style={inp} type="number" min="0.01" step="0.01" value={form.qty} onChange={set('qty')} />
-        </div>
+        <Grid cols={2}>
+          <div style={{ ...fg, maxWidth: 140 }}>
+            <label style={label}>Quantity</label>
+            <input style={inp} type="number" min="0.01" step="0.01" value={form.qty} onChange={set('qty')} />
+          </div>
+          <div style={fg}>
+            <label style={label}>Price List <span style={{ color: 'var(--text-sub)', fontWeight: 400 }}>(override)</span></label>
+            <select style={inp} value={form.price_list_id} onChange={set('price_list_id')}>
+              <option value="">Auto (customer's list or Retail RRP)</option>
+              {priceLists.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+            </select>
+          </div>
+        </Grid>
         <div style={{ display: 'flex', gap: 8, marginBottom: result ? 20 : 0 }}>
           <Btn type="submit" disabled={loading}>{loading ? 'Calculating…' : 'Simulate'}</Btn>
         </div>
 
         {result && (
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+            {result.priceListName && (
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ background: 'rgba(47,127,232,0.1)', color: 'var(--accent)', borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600 }}>
+                  {result.priceListName}
+                </span>
+                price list applied
+              </div>
+            )}
+            {!result.priceListName && result.basePrice > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', marginBottom: 10 }}>
+                Base price from product default
+              </div>
+            )}
+            {result.basePrice === 0 && (
+              <div style={{ fontSize: 11, color: '#E89B2F', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ⚠ No price found — set a Retail Price on the product or assign it to a price list
+              </div>
+            )}
             <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 14 }}>Price Breakdown</div>
             <table style={{ width: '100%', fontSize: 13 }}>
               <tbody>
                 {[
-                  ['Base Price',        AUD(result.basePrice)],
-                  ['Customer Discount', result.customerDiscountPct ? `−${PCT(result.customerDiscountPct)}` : '—'],
-                  ['Volume Discount',   result.volumeDiscountPct   ? `−${PCT(result.volumeDiscountPct)}`   : '—'],
-                  ['Unit Price (ex GST)', AUD(result.unitPrice)],
-                  ['GST',               AUD(result.taxAmount)],
+                  ['Base Price',           AUD(result.basePrice)],
+                  ['Customer Discount',    result.customerDiscountPct ? `−${PCT(result.customerDiscountPct)}` : '—'],
+                  ['Volume Discount',      result.volumeDiscountPct   ? `−${PCT(result.volumeDiscountPct)}`   : '—'],
+                  ['Unit Price (ex GST)',  AUD(result.unitPrice)],
+                  ['GST',                  AUD(result.taxAmount)],
                   ['Line Total (inc GST)', AUD(result.lineTotal)],
                 ].map(([k, v]) => (
                   <tr key={k}>

@@ -179,9 +179,10 @@ export default function DashboardShell() {
                 <NavItem to="/admin/products/custom-fields"icon={<FieldsIcon />} label="Custom Fields"       collapsed={collapsed} />
                 <NavItem to="/admin/products/uom"           icon={<UomIcon />}       label="Units of Measure"   collapsed={collapsed} />
                 <NavItem to="/admin/field-validation"      icon={<ValidationIcon />} label="Field Validation"   collapsed={collapsed} />
-                <NavItem to="/admin/customer-tiers"        icon={<TierIcon />}       label="Customer Tiers"    collapsed={collapsed} />
-                <NavItem to="/admin/price-lists"           icon={<ListIcon />}       label="Price Lists"       collapsed={collapsed} />
-                <NavItem to="/admin/exchange-rates"        icon={<FxIcon />}         label="Exchange Rates"    collapsed={collapsed} />
+                <NavItem to="/admin/customer-tiers"       icon={<TierIcon />}    label="Customer Tiers"       collapsed={collapsed} />
+                <NavItem to="/admin/customer-categories"  icon={<CatGroupIcon />} label="Customer Categories" collapsed={collapsed} />
+                <NavItem to="/admin/retail-prices"        icon={<PriceTagIcon />} label="Retail Prices"       collapsed={collapsed} />
+                <NavItem to="/admin/exchange-rates"       icon={<FxIcon />}       label="Exchange Rates"       collapsed={collapsed} />
                 <NavItem to="/warehouse"                   icon={<WarehouseIcon />}  label="Warehouses"        collapsed={collapsed} />
                 <NavItem to="/warehouse/reports"           icon={<ReportIcon />}     label="Stock Reports"     collapsed={collapsed} />
               </NavSection>
@@ -317,4 +318,6 @@ function TierIcon() { return ic(<><path d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 
 function ListIcon() { return ic(<><line x1='8' y1='6' x2='21' y2='6'/><line x1='8' y1='12' x2='21' y2='12'/><line x1='8' y1='18' x2='21' y2='18'/><line x1='3' y1='6' x2='3.01' y2='6'/><line x1='3' y1='12' x2='3.01' y2='12'/><line x1='3' y1='18' x2='3.01' y2='18'/></>); }
 function FxIcon()    { return ic(<><line x1='12' y1='1' x2='12' y2='23'/><path d='M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/></>); }
 function TruckIcon() { return ic(<><rect x='1' y='3' width='15' height='13' rx='2'/><polygon points='16 8 20 8 23 11 23 16 16 16 16 8'/><circle cx='5.5' cy='18.5' r='2.5'/><circle cx='18.5' cy='18.5' r='2.5'/></>); }
-function ScanIcon()  { return ic(<><rect x='2' y='2' width='7' height='7' rx='1'/><rect x='15' y='2' width='7' height='7' rx='1'/><rect x='2' y='15' width='7' height='7' rx='1'/><line x1='15' y1='15' x2='22' y2='15'/><line x1='22' y1='15' x2='22' y2='22'/><line x1='15' y1='22' x2='22' y2='22'/></>); }
+function ScanIcon()     { return ic(<><rect x='2' y='2' width='7' height='7' rx='1'/><rect x='15' y='2' width='7' height='7' rx='1'/><rect x='2' y='15' width='7' height='7' rx='1'/><line x1='15' y1='15' x2='22' y2='15'/><line x1='22' y1='15' x2='22' y2='22'/><line x1='15' y1='22' x2='22' y2='22'/></>); }
+function CatGroupIcon() { return ic(<><path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a4 4 0 0 1 0 7.75'/></>); }
+function PriceTagIcon() { return ic(<><path d='M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z'/><line x1='7' y1='7' x2='7.01' y2='7'/></>); }

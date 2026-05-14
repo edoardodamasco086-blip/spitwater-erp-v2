@@ -227,10 +227,12 @@ export default function StockTab({ productId, product }) {
   }, [loadStock, loadMovements]);
 
   // Computed totals
-  const totalOnHand   = stockData.reduce((s, r) => s + (r.qty_on_hand   || 0), 0);
-  const totalAvail    = stockData.reduce((s, r) => s + (r.qty_available  || 0), 0);
-  const totalReserved = stockData.reduce((s, r) => s + (r.qty_reserved   || 0), 0);
-  const totalOnOrder  = stockData.reduce((s, r) => s + (r.qty_on_order   || 0), 0);
+  const totalOnHand    = stockData.reduce((s, r) => s + (r.qty_on_hand    || 0), 0);
+  const totalAvail     = stockData.reduce((s, r) => s + (r.qty_available  || 0), 0);
+  const totalSoftAlloc = stockData.reduce((s, r) => s + (r.soft_allocated || 0), 0);
+  const totalHardAlloc = stockData.reduce((s, r) => s + (r.hard_allocated || 0), 0);
+  const totalCommitted = totalSoftAlloc + totalHardAlloc;
+  const totalOnOrder   = stockData.reduce((s, r) => s + (r.qty_on_order   || 0), 0);
 
   const minStock = product?.min_stock_level || 0;
   const availColor = totalAvail <= 0
@@ -264,18 +266,18 @@ export default function StockTab({ productId, product }) {
           sub="Total physical stock"
         />
         <KpiCard
-          label="Available"
+          label="Available (ATP)"
           value={fmt(totalAvail)}
           unit={product?.uom_code}
           color={availColor}
-          sub={minStock > 0 ? `Min level: ${fmt(minStock)} ${product?.uom_code || ''}`.trim() : 'On hand minus committed'}
+          sub={minStock > 0 ? `Min level: ${fmt(minStock)} ${product?.uom_code || ''}`.trim() : 'On hand − soft alloc − hard alloc'}
         />
         <KpiCard
           label="Committed"
-          value={fmt(totalReserved)}
+          value={fmt(totalCommitted)}
           unit={product?.uom_code}
-          color={totalReserved > 0 ? 'var(--orange)' : 'var(--text-sub)'}
-          sub="Reserved for sales, services & production"
+          color={totalCommitted > 0 ? 'var(--orange)' : 'var(--text-sub)'}
+          sub={`Soft: ${fmt(totalSoftAlloc)} · Hard: ${fmt(totalHardAlloc)}`}
         />
         <KpiCard
           label="On Order"
@@ -313,7 +315,7 @@ export default function StockTab({ productId, product }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Warehouse', 'On Hand', 'Reserved', 'Available', 'On Order', 'Health', 'Updated'].map(h => (
+                  {['Warehouse', 'On Hand', 'Soft Alloc', 'Hard Alloc', 'Available (ATP)', 'On Order', 'Health', 'Updated'].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: h === 'Warehouse' ? 'left' : 'right', fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
                       {h}
                     </th>
@@ -322,8 +324,10 @@ export default function StockTab({ productId, product }) {
               </thead>
               <tbody>
                 {stockData.map(s => {
-                  const avail = s.qty_available ?? (s.qty_on_hand - s.qty_reserved);
-                  const health = avail <= 0 ? 'red' : minStock > 0 && avail <= minStock ? 'orange' : 'green';
+                  const softAlloc = s.soft_allocated || 0;
+                  const hardAlloc = s.hard_allocated || 0;
+                  const avail     = s.qty_available ?? Math.max(0, s.qty_on_hand - softAlloc - hardAlloc);
+                  const health    = avail <= 0 ? 'red' : minStock > 0 && avail <= minStock ? 'orange' : 'green';
                   return (
                     <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '11px 14px' }}>
@@ -331,7 +335,8 @@ export default function StockTab({ productId, product }) {
                         <div style={{ fontSize: 11, fontFamily: 'DM Mono', color: 'var(--text-sub)' }}>{s.warehouse_code}</div>
                       </td>
                       <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', fontWeight: 600 }}>{fmt(s.qty_on_hand)}</td>
-                      <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', color: s.qty_reserved > 0 ? 'var(--orange)' : 'var(--text-sub)' }}>{fmt(s.qty_reserved)}</td>
+                      <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', color: softAlloc > 0 ? 'var(--orange)' : 'var(--text-sub)' }}>{fmt(softAlloc)}</td>
+                      <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', color: hardAlloc > 0 ? 'var(--red)' : 'var(--text-sub)' }}>{fmt(hardAlloc)}</td>
                       <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', fontWeight: 600, color: avail > 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(avail)}</td>
                       <td style={{ padding: '11px 14px', textAlign: 'right', fontFamily: 'DM Mono', color: 'var(--accent)' }}>{fmt(s.qty_on_order)}</td>
                       <td style={{ padding: '11px 14px', textAlign: 'right' }}>

@@ -36,7 +36,7 @@ router.get('/', asyncHandler(async (req, res) => {
     .query(`
       SELECT
         pl.id, pl.name, pl.price_list_type, pl.currency_code,
-        pl.is_default, pl.is_tax_inclusive, pl.description,
+        pl.is_default, pl.is_base, pl.is_tax_inclusive, pl.description,
         pl.valid_from, pl.valid_to, pl.is_active,
         pl.created_at, pl.updated_at,
         (SELECT COUNT(DISTINCT pli.product_id)
@@ -99,6 +99,15 @@ router.patch('/:id', requirePermission('price_lists', 'update'), asyncHandler(as
     valid_from, valid_to, is_active,
   } = req.body;
 
+  // Block deactivating a base price list
+  if (is_active === false || is_active === 0) {
+    const baseCheck = await pool.request()
+      .input('id', sql.Int, id).input('org_id', sql.Int, req.user.orgId)
+      .query('SELECT is_base FROM price_lists WHERE id=@id AND org_id=@org_id');
+    if (baseCheck.recordset[0]?.is_base)
+      return res.status(409).json({ success: false, error: 'Cannot deactivate the base Retail (RRP) price list.' });
+  }
+
   if (is_default) {
     await pool.request().input('org_id', sql.Int, req.user.orgId).input('id', sql.Int, id)
       .query('UPDATE price_lists SET is_default=0 WHERE org_id=@org_id AND id<>@id');
@@ -142,8 +151,9 @@ router.delete('/:id', requirePermission('price_lists', 'update'), asyncHandler(a
   // Check if default — can't delete default
   const check = await pool.request()
     .input('id', sql.Int, id).input('org_id', sql.Int, req.user.orgId)
-    .query('SELECT is_default FROM price_lists WHERE id=@id AND org_id=@org_id');
+    .query('SELECT is_default, is_base FROM price_lists WHERE id=@id AND org_id=@org_id');
   if (!check.recordset.length) return res.status(404).json({ success: false, error: 'Not found.' });
+  if (check.recordset[0].is_base)    return res.status(409).json({ success: false, error: 'Cannot delete the base Retail (RRP) price list.' });
   if (check.recordset[0].is_default) return res.status(409).json({ success: false, error: 'Cannot delete the default price list. Set another as default first.' });
 
   // Soft delete

@@ -36,11 +36,14 @@ router.get('/', perm('read'), asyncHandler(async (req, res) => {
              c.full_name  AS customer_name,
              p.name       AS product_name,
              p.product_code,
-             cat.name     AS category_name
+             cat.name     AS category_name,
+             cc.name      AS customer_category_name,
+             cc.color     AS customer_category_color
       FROM pricing_conditions pc
-      LEFT JOIN contacts          c   ON c.id   = pc.customer_id
-      LEFT JOIN products          p   ON p.id   = pc.product_id
-      LEFT JOIN product_categories cat ON cat.id = pc.category_id
+      LEFT JOIN contacts            c   ON c.id   = pc.customer_id
+      LEFT JOIN products            p   ON p.id   = pc.product_id
+      LEFT JOIN product_categories  cat ON cat.id  = pc.category_id
+      LEFT JOIN customer_categories cc  ON cc.id   = pc.customer_category_id
       WHERE pc.org_id = @org_id
         AND (@type IS NULL OR pc.condition_type = @type)
       ORDER BY pc.condition_type, pc.priority, pc.id
@@ -52,8 +55,9 @@ router.get('/', perm('read'), asyncHandler(async (req, res) => {
 router.post('/', perm('write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const { condition_type, priority, customer_id, product_id, category_id, price_list_id,
-          min_qty, max_qty, discount_type, discount_value, tax_rate, valid_from, valid_to, notes } = req.body;
+  const { condition_type, priority, customer_id, customer_category_id, product_id, category_id,
+          price_list_id, min_qty, max_qty, discount_type, discount_value, tax_rate,
+          valid_from, valid_to, notes } = req.body;
 
   if (!condition_type) return res.status(400).json({ success: false, error: 'condition_type is required.' });
 
@@ -61,10 +65,11 @@ router.post('/', perm('write'), asyncHandler(async (req, res) => {
     .input('org_id',         sql.Int,           orgId)
     .input('condition_type', sql.VarChar(30),   condition_type)
     .input('priority',       sql.Int,           priority != null ? Number(priority) : 10)
-    .input('customer_id',    sql.Int,           customer_id   || null)
-    .input('product_id',     sql.Int,           product_id    || null)
-    .input('category_id',    sql.Int,           category_id   || null)
-    .input('price_list_id',  sql.Int,           price_list_id || null)
+    .input('customer_id',          sql.Int, customer_id          || null)
+    .input('customer_category_id', sql.Int, customer_category_id || null)
+    .input('product_id',           sql.Int, product_id           || null)
+    .input('category_id',          sql.Int, category_id          || null)
+    .input('price_list_id',        sql.Int, price_list_id        || null)
     .input('min_qty',        sql.Decimal(18,4), min_qty != null ? Number(min_qty) : null)
     .input('max_qty',        sql.Decimal(18,4), max_qty != null ? Number(max_qty) : null)
     .input('discount_type',  sql.VarChar(10),   discount_type  || 'percent')
@@ -77,12 +82,14 @@ router.post('/', perm('write'), asyncHandler(async (req, res) => {
     .query(`
       DECLARE @out TABLE (id INT);
       INSERT INTO pricing_conditions
-        (org_id, condition_type, priority, customer_id, product_id, category_id, price_list_id,
+        (org_id, condition_type, priority, customer_id, customer_category_id,
+         product_id, category_id, price_list_id,
          min_qty, max_qty, discount_type, discount_value, tax_rate, valid_from, valid_to,
          is_active, notes, created_by, created_at)
       OUTPUT INSERTED.id INTO @out
-      VALUES (@org_id, @condition_type, @priority, @customer_id, @product_id, @category_id,
-              @price_list_id, @min_qty, @max_qty, @discount_type, @discount_value, @tax_rate,
+      VALUES (@org_id, @condition_type, @priority, @customer_id, @customer_category_id,
+              @product_id, @category_id, @price_list_id,
+              @min_qty, @max_qty, @discount_type, @discount_value, @tax_rate,
               @valid_from, @valid_to, 1, @notes, @created_by, GETDATE());
       SELECT id FROM @out;
     `);
@@ -142,14 +149,66 @@ router.post('/simulate', perm('read'), asyncHandler(async (req, res) => {
   if (!product_id || !qty) return res.status(400).json({ success: false, error: 'product_id and qty required.' });
 
   let gst = true;
+  let customerCategoryId = null;
+  let resolvedPriceListId = price_list_id ? Number(price_list_id) : null;
+  let resolvedPriceListName = null;
+
   if (customer_id) {
     const custRes = await pool.request().input('id', sql.Int, customer_id)
-      .query('SELECT gst_registered FROM contacts WHERE id=@id');
+      .query('SELECT gst_registered, customer_category_id FROM contacts WHERE id=@id');
     gst = !!custRes.recordset[0]?.gst_registered;
+    customerCategoryId = custRes.recordset[0]?.customer_category_id || null;
+
+    // Auto-resolve customer's assigned price list if not explicitly provided
+    if (!resolvedPriceListId) {
+      const cplRes = await pool.request().input('contact_id', sql.Int, customer_id)
+        .query(`
+          SELECT TOP 1 pl.id, pl.name
+          FROM contact_price_lists cpl
+          JOIN price_lists pl ON pl.id = cpl.price_list_id AND pl.is_active = 1
+          WHERE cpl.contact_id = @contact_id
+        `);
+      if (cplRes.recordset.length) {
+        resolvedPriceListId   = cplRes.recordset[0].id;
+        resolvedPriceListName = cplRes.recordset[0].name;
+      }
+    }
   }
 
-  const pricing = await calculatePrice({ orgId, productId: product_id, customerId: customer_id || null, priceListId: price_list_id || null, qty, customerGstRegistered: gst, pool, sql });
-  res.json({ success: true, data: pricing });
+  // Fall back to org base price list (Retail/RRP — cash sale baseline)
+  if (!resolvedPriceListId) {
+    const baseRes = await pool.request().input('org_id', sql.Int, orgId)
+      .query(`SELECT TOP 1 id, name FROM price_lists WHERE org_id=@org_id AND is_base=1 AND is_active=1 ORDER BY id`);
+    if (baseRes.recordset.length) {
+      resolvedPriceListId   = baseRes.recordset[0].id;
+      resolvedPriceListName = baseRes.recordset[0].name + ' (RRP)';
+    }
+  }
+
+  // Final fallback: org default price list
+  if (!resolvedPriceListId) {
+    const defRes = await pool.request().input('org_id', sql.Int, orgId)
+      .query(`SELECT TOP 1 id, name FROM price_lists WHERE org_id=@org_id AND is_default=1 AND is_active=1`);
+    if (defRes.recordset.length) {
+      resolvedPriceListId   = defRes.recordset[0].id;
+      resolvedPriceListName = defRes.recordset[0].name + ' (default)';
+    }
+  }
+
+  // Get name for explicitly supplied price_list_id
+  if (price_list_id && !resolvedPriceListName) {
+    const plNameRes = await pool.request().input('id', sql.Int, Number(price_list_id))
+      .query('SELECT name FROM price_lists WHERE id=@id');
+    resolvedPriceListName = plNameRes.recordset[0]?.name || null;
+  }
+
+  const pricing = await calculatePrice({
+    orgId, productId: product_id, customerId: customer_id || null,
+    customerCategoryId, priceListId: resolvedPriceListId, qty,
+    customerGstRegistered: gst, pool, sql,
+  });
+
+  res.json({ success: true, data: { ...pricing, priceListId: resolvedPriceListId, priceListName: resolvedPriceListName } });
 }));
 
 module.exports = router;

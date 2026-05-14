@@ -60,7 +60,25 @@
       "Bash(Get-Service -Name *SQL*)",
       "Bash(Select-Object Name, Status, DisplayName)",
       "PowerShell(netstat -ano)",
-      "Bash(node scripts/migrate-so-lines.js)"
+      "Bash(node scripts/migrate-so-lines.js)",
+      "Bash(node --check server/utils/atpEngine.js)",
+      "Bash(node --check server/utils/reschedulingEngine.js)",
+      "Bash(node --check server/routes/o2cSO.js)",
+      "Bash(node --check server/routes/wmsInbound.js)",
+      "Bash(node --check server/routes/products.js)",
+      "Bash(node --check client/src/pages/products/StockTab.jsx)",
+      "Bash(powershell -Command \"Get-Content 'c:\\\\Projects\\\\spitwater-erp-v2\\\\package.json'\")",
+      "Bash(Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\package.json\")",
+      "Bash(Select-String -Pattern 'cron|node-cron|schedule')",
+      "Bash(node server/scripts/migrate-so-lines.js)",
+      "Bash(node scripts/migrate-delivery-fulfillment.js)",
+      "Bash(node scripts/diagnose-data-sync.js)",
+      "Bash(node scripts/migrate-sync-backorders-picking.js)",
+      "Bash(Find /c/Projects/spitwater-erp-v2/server/utils -name \"*\" -type f)",
+      "Bash(Find /c/Projects/spitwater-erp-v2/client/src/components -name \"*\" -type f)",
+      "Bash(Find /c/Projects/spitwater-erp-v2/server -name \"*[Pp]ricing*\" -type f)",
+      "Bash(node scripts/migrate-customer-categories.js)",
+      "Bash(node scripts/migrate-price-list-base.js)"
     ]
   }
 }

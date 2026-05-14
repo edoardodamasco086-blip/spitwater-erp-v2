@@ -25,7 +25,8 @@ const { getNextNumber }          = require('../utils/numbering');
 const { calculatePrice }         = require('../utils/pricingEngine');
 const { runATP }                 = require('../utils/atpEngine');
 const { checkCredit }            = require('../utils/creditEngine');
-const { publishPickingTask, releaseAllocations } = require('../utils/o2cEventPublisher');
+const { releaseAllocations }              = require('../utils/o2cEventPublisher');
+const { generatePickingList }             = require('../utils/pickingEngine');
 
 router.use(requireAuth);
 const perm    = action => requirePermission('sales_orders', action);
@@ -89,7 +90,7 @@ router.get('/', perm('read'), asyncHandler(async (req, res) => {
 router.post('/', perm('write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const { customer_id, warehouse_id, price_list_id, currency_code, payment_terms, requested_delivery_date, notes } = req.body;
+  const { customer_id, warehouse_id, price_list_id, currency_code, payment_terms, requested_delivery_date, notes, is_full_delivery_required } = req.body;
   if (!customer_id) return res.status(400).json({ success: false, error: 'customer_id is required.' });
 
   const { number } = await getNextNumber('sales_order', orgId, pool, sql);
@@ -100,19 +101,22 @@ router.post('/', perm('write'), asyncHandler(async (req, res) => {
     .input('customer_id',             sql.Int,           customer_id)
     .input('warehouse_id',            sql.Int,           warehouse_id  || null)
     .input('price_list_id',           sql.Int,           price_list_id || null)
-    .input('currency_code',           sql.VarChar(3),    currency_code || 'AUD')
-    .input('payment_terms',           sql.NVarChar(100), payment_terms || null)
-    .input('requested_delivery_date', sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
-    .input('notes',                   sql.NVarChar(1000), notes || null)
-    .input('created_by',              sql.Int,           req.user.userId)
+    .input('currency_code',               sql.VarChar(3),    currency_code || 'AUD')
+    .input('payment_terms',               sql.NVarChar(100), payment_terms || null)
+    .input('requested_delivery_date',     sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
+    .input('notes',                       sql.NVarChar(1000), notes || null)
+    .input('is_full_delivery_required',   sql.Bit,           is_full_delivery_required ? 1 : 0)
+    .input('created_by',                  sql.Int,           req.user.userId)
     .query(`
       DECLARE @out TABLE (id INT);
       INSERT INTO sales_orders
         (org_id, so_number, status, customer_id, warehouse_id, price_list_id, currency_code,
-         payment_terms, requested_delivery_date, notes, created_by, created_at, updated_at)
+         payment_terms, requested_delivery_date, notes, is_full_delivery_required,
+         created_by, created_at, updated_at)
       OUTPUT INSERTED.id INTO @out
       VALUES (@org_id, @so_number, 'draft', @customer_id, @warehouse_id, @price_list_id,
-              @currency_code, @payment_terms, @requested_delivery_date, @notes, @created_by, GETDATE(), GETDATE());
+              @currency_code, @payment_terms, @requested_delivery_date, @notes,
+              @is_full_delivery_required, @created_by, GETDATE(), GETDATE());
       SELECT id FROM @out;
     `);
 
@@ -183,24 +187,26 @@ router.patch('/:id', perm('update'), asyncHandler(async (req, res) => {
   if (!so) return res.status(404).json({ success: false, error: 'Sales Order not found.' });
   if (['cancelled','shipped','invoiced'].includes(so.status)) return res.status(409).json({ success: false, error: `Cannot edit a ${so.status} SO.` });
 
-  const { warehouse_id, payment_terms, requested_delivery_date, notes, cascade_to_lines, cascade_warehouse_to_lines } = req.body;
+  const { warehouse_id, payment_terms, requested_delivery_date, notes, is_full_delivery_required, cascade_to_lines, cascade_warehouse_to_lines } = req.body;
   const isDraft    = ['draft','credit_hold'].includes(so.status);
   const isTerminal = ['shipped','invoiced','cancelled'].includes(so.status);
 
   await pool.request()
-    .input('id',                      sql.Int,           id)
-    .input('org_id',                  sql.Int,           orgId)
-    .input('warehouse_id',            sql.Int,           !isTerminal && warehouse_id != null ? Number(warehouse_id) : null)
-    .input('payment_terms',           sql.NVarChar(100), isDraft ? (payment_terms ?? null) : null)
-    .input('requested_delivery_date', sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
-    .input('notes',                   sql.NVarChar(1000), isDraft ? (notes ?? null) : null)
+    .input('id',                          sql.Int,           id)
+    .input('org_id',                      sql.Int,           orgId)
+    .input('warehouse_id',                sql.Int,           !isTerminal && warehouse_id != null ? Number(warehouse_id) : null)
+    .input('payment_terms',               sql.NVarChar(100), isDraft ? (payment_terms ?? null) : null)
+    .input('requested_delivery_date',     sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
+    .input('notes',                       sql.NVarChar(1000), isDraft ? (notes ?? null) : null)
+    .input('is_full_delivery_required',   sql.Bit,           is_full_delivery_required != null ? (is_full_delivery_required ? 1 : 0) : null)
     .query(`
       UPDATE sales_orders
-      SET warehouse_id            = CASE WHEN @warehouse_id IS NOT NULL THEN @warehouse_id ELSE warehouse_id END,
-          payment_terms           = CASE WHEN @payment_terms IS NOT NULL THEN @payment_terms ELSE payment_terms END,
-          requested_delivery_date = CASE WHEN @requested_delivery_date IS NOT NULL THEN @requested_delivery_date ELSE requested_delivery_date END,
-          notes                   = CASE WHEN @notes IS NOT NULL THEN @notes ELSE notes END,
-          updated_at              = GETDATE()
+      SET warehouse_id              = CASE WHEN @warehouse_id IS NOT NULL THEN @warehouse_id ELSE warehouse_id END,
+          payment_terms             = CASE WHEN @payment_terms IS NOT NULL THEN @payment_terms ELSE payment_terms END,
+          requested_delivery_date   = CASE WHEN @requested_delivery_date IS NOT NULL THEN @requested_delivery_date ELSE requested_delivery_date END,
+          notes                     = CASE WHEN @notes IS NOT NULL THEN @notes ELSE notes END,
+          is_full_delivery_required = CASE WHEN @is_full_delivery_required IS NOT NULL THEN @is_full_delivery_required ELSE is_full_delivery_required END,
+          updated_at                = GETDATE()
       WHERE id=@id AND org_id=@org_id
     `);
 
@@ -480,7 +486,8 @@ router.post('/:id/confirm', perm('update'), asyncHandler(async (req, res) => {
   for (const item of items.recordset) {
     if (item.line_status === 'closed' || item.line_status === 'cancelled') continue;
     const wh  = item.warehouse_id || defaultWhId;
-    const atp = await runATP({ productId: item.product_id, warehouseId: wh, orgId, qtyRequested: item.qty_ordered, pool, sql });
+    const rdd = item.requested_delivery_date || so.requested_delivery_date || null;
+    const atp = await runATP({ productId: item.product_id, warehouseId: wh, orgId, qtyRequested: item.qty_ordered, requestedDeliveryDate: rdd, pool, sql });
 
     // Delete any old schedule lines (re-confirm case)
     await pool.request().input('so_item_id', sql.Int, item.id)
@@ -528,8 +535,8 @@ router.post('/:id/confirm', perm('update'), asyncHandler(async (req, res) => {
       WHERE id=@id AND org_id=@org_id
     `);
 
-  // ── WMS: Publish picking task for available lines ──────────
-  const { deliveryId, deliveryNumber } = await publishPickingTask({ soId: id, orgId, pool, sql });
+  // ── Generate picking list (respects full/partial delivery flag) ─
+  const pickResult = await generatePickingList({ soId: id, orgId, pool, sql });
 
   res.json({
     success: true,
@@ -537,8 +544,10 @@ router.post('/:id/confirm', perm('update'), asyncHandler(async (req, res) => {
       status:          'confirmed',
       credit_status:   'ok',
       schedule_lines:  allScheduleLines,
-      delivery_id:     deliveryId,
-      delivery_number: deliveryNumber,
+      delivery_id:     pickResult.deliveryId,
+      delivery_number: pickResult.deliveryNumber,
+      picking_blocked: pickResult.blocked,
+      picking_reason:  pickResult.reason,
     },
   });
 }));
@@ -570,7 +579,8 @@ router.post('/:id/release-hold', perm('update'), asyncHandler(async (req, res) =
 
   for (const item of items.recordset) {
     const wh  = item.warehouse_id || so.warehouse_id;
-    const atp = await runATP({ productId: item.product_id, warehouseId: wh, orgId, qtyRequested: item.qty_ordered, pool, sql });
+    const rdd = item.requested_delivery_date || so.requested_delivery_date || null;
+    const atp = await runATP({ productId: item.product_id, warehouseId: wh, orgId, qtyRequested: item.qty_ordered, requestedDeliveryDate: rdd, pool, sql });
     await pool.request().input('so_item_id', sql.Int, item.id)
       .query('DELETE FROM sales_order_schedule_lines WHERE so_item_id=@so_item_id AND status=\'open\'');
     for (const sl of atp.scheduleLines) {
@@ -595,8 +605,8 @@ router.post('/:id/release-hold', perm('update'), asyncHandler(async (req, res) =
       .query(`UPDATE sales_order_items SET atp_status=@atp_status WHERE id=@id`);
   }
 
-  const { deliveryId, deliveryNumber } = await publishPickingTask({ soId: id, orgId, pool, sql });
-  res.json({ success: true, data: { status: 'confirmed', delivery_id: deliveryId, delivery_number: deliveryNumber } });
+  const pickResult = await generatePickingList({ soId: id, orgId, pool, sql });
+  res.json({ success: true, data: { status: 'confirmed', delivery_id: pickResult.deliveryId, delivery_number: pickResult.deliveryNumber, picking_blocked: pickResult.blocked } });
 }));
 
 // ── CANCEL ────────────────────────────────────────────────────

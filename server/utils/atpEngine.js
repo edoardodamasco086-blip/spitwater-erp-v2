@@ -3,10 +3,10 @@
 // utils/atpEngine.js  — Available-to-Promise Engine
 //
 // Calculates real-time ATP for a product+warehouse:
-//   available = qty_on_hand - qty_reserved - soft_allocated
+//   available = qty_on_hand - soft_allocated - hard_allocated
 //
 // If available < requested:
-//   - Schedule line 1: available qty, today
+//   - Schedule line 1: available qty, MAX(today, requestedDeliveryDate)
 //   - Schedule line 2: remainder, earliest open PO delivery date
 //
 // Returns: { available, scheduleLines, atpStatus }
@@ -29,7 +29,7 @@ const TODAY = () => {
  * @param {object} params.sql          — mssql sql types
  * @returns {Promise<{available: number, atpStatus: string, scheduleLines: Array}>}
  */
-async function runATP({ productId, warehouseId, orgId, qtyRequested, pool, sql }) {
+async function runATP({ productId, warehouseId, orgId, qtyRequested, requestedDeliveryDate, pool, sql }) {
   // ── 1. Current stock position ──────────────────────────────────
   const stockReq = pool.request()
     .input('org_id',      sql.Int, orgId)
@@ -62,31 +62,31 @@ async function runATP({ productId, warehouseId, orgId, qtyRequested, pool, sql }
   const stockRes = await stockReq.query(stockSql);
   const s = stockRes.recordset[0];
   const onHand    = Number(s.on_hand);
-  const reserved  = Number(s.reserved);
   const softAlloc = Number(s.soft_alloc);
   const hardAlloc = Number(s.hard_alloc);
 
-  // Hard allocated (actively picking) is already deducted from on_hand by WMS
-  // Soft allocated = confirmed SOs not yet in picking — deduct from available
-  const available = Math.max(0, onHand - reserved - softAlloc);
+  // ATP = physical stock minus all reservations (soft + hard)
+  const available = Math.max(0, onHand - softAlloc - hardAlloc);
 
   const qty = Number(qtyRequested);
 
   // ── 2. Build schedule lines ────────────────────────────────────
-  const today = TODAY();
+  const today   = TODAY();
+  const rddDate = requestedDeliveryDate ? new Date(requestedDeliveryDate) : null;
+  // Available lines are confirmed for the customer's requested date (or today if sooner)
+  const availDate = rddDate && rddDate > today ? rddDate : today;
   const scheduleLines = [];
 
   if (available >= qty) {
-    // Full stock available immediately
     scheduleLines.push({
       schedule_line_no: 1,
       qty,
-      confirmed_date:   today,
+      confirmed_date:   availDate,
       atp_category:     'available',
       source_type:      'stock',
       source_po_id:     null,
     });
-    return { available, atpStatus: 'ok', scheduleLines, atpDate: today };
+    return { available, atpStatus: 'ok', scheduleLines, atpDate: availDate };
   }
 
   // ── 3. Partial — check open POs for backorder date ─────────────
@@ -118,12 +118,12 @@ async function runATP({ productId, warehouseId, orgId, qtyRequested, pool, sql }
     ORDER BY po.expected_delivery_date ASC
   `);
 
-  // If some stock is available now, create immediate schedule line first
+  // If some stock is available, schedule it for the customer's requested date
   if (available > 0) {
     scheduleLines.push({
       schedule_line_no: 1,
       qty:              available,
-      confirmed_date:   today,
+      confirmed_date:   availDate,
       atp_category:     'available',
       source_type:      'stock',
       source_po_id:     null,

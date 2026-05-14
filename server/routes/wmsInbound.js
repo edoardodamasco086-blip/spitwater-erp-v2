@@ -30,6 +30,7 @@ const { resolveAccount, AccountDeterminationError }     = require('../utils/acco
 const { parseGs1, lookupProduct }                       = require('../utils/gs1Parser');
 const { suggestBin }                                    = require('../utils/putawayEngine');
 const { applyGrToPo }                                   = require('../utils/p2pApprovalEngine');
+const { runRescheduling }                               = require('../utils/reschedulingEngine');
 
 router.use(requireAuth);
 
@@ -926,6 +927,11 @@ router.post('/:id/post', asyncHandler(async (req, res) => {
       }));
       await applyGrToPo(d.po_id, deliveryItemsForPo, orgId, () => pool.request(), sql);
     }
+
+    // V_V2 rescheduling — redistribute free ATP to open backorders
+    await Promise.allSettled(items.map(item =>
+      runRescheduling({ productId: item.product_id, warehouseId: d.warehouse_id, orgId, pool, sql })
+    ));
 
     res.json({
       success: true,

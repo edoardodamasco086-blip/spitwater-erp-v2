@@ -2,11 +2,42 @@ const cron = require('node-cron');
 const logger = require('../config/logger');
 const { pool, sql } = require('../config/db');
 const { scrapeMarketDataForProduct } = require('./marketScraperService');
+const { runDeliveryDueList }         = require('./deliveryDueListService');
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-let isRunning = false;
+let isRunning    = false;
+let isDdlRunning = false;
 
+// ── Delivery Due List — daily at 06:00 ────────────────────────
+// Mimics SAP VL10: converts available-but-unpicked schedule lines
+// into outbound deliveries, respecting Full / Partial delivery rules.
+cron.schedule('0 6 * * *', async () => {
+  if (isDdlRunning) {
+    logger.warn('[DDL] Delivery Due List already running — skipping.');
+    return;
+  }
+  isDdlRunning = true;
+  logger.info('[DDL] Starting Delivery Due List run...');
+  try {
+    const summary = await runDeliveryDueList({ pool, sql });
+    logger.info(
+      `[DDL] Complete — processed: ${summary.processed}, ` +
+      `created: ${summary.created}, blocked: ${summary.blocked}, errors: ${summary.errors}`
+    );
+    if (summary.errors > 0) {
+      summary.details
+        .filter(d => d.outcome === 'error')
+        .forEach(d => logger.error(`[DDL] SO ${d.so_number} (${d.so_id}): ${d.reason}`));
+    }
+  } catch (err) {
+    logger.error(`[DDL] Fatal error: ${err.message}`);
+  } finally {
+    isDdlRunning = false;
+  }
+});
+
+// ── AI Market Scrape — daily at 02:00 ─────────────────────────
 // Run every day at 2:00 AM
 cron.schedule('0 2 * * *', async () => {
   if (isRunning) {

@@ -20,8 +20,9 @@ import CategoryManager   from './pages/admin/products/CategoryManager';
 import CustomFieldManager from './pages/admin/products/CustomFieldManager';
 import UomManager            from './pages/admin/products/UomManager';
 import FieldValidationPage   from './pages/admin/FieldValidationPage';
-import CustomerTiersPage    from './pages/admin/CustomerTiersPage';
-import PriceListsPage       from './pages/admin/PriceListsPage';
+import CustomerTiersPage       from './pages/admin/CustomerTiersPage';
+import CustomerCategoriesPage from './pages/admin/CustomerCategoriesPage';
+import RetailPricesPage       from './pages/admin/RetailPricesPage';
 import ExchangeRatesPage    from './pages/admin/ExchangeRatesPage';
 import WarehousePage        from './pages/warehouse/WarehousePage';
 import StockReportsPage     from './pages/warehouse/StockReportsPage';
@@ -99,7 +100,9 @@ export default function App() {
         <Route path="admin/products/uom"           element={<RequireAdmin><UomManager /></RequireAdmin>} />
         <Route path="admin/field-validation"       element={<RequireAdmin><FieldValidationPage /></RequireAdmin>} />
         <Route path="admin/customer-tiers"          element={<RequireAdmin><CustomerTiersPage /></RequireAdmin>} />
-        <Route path="admin/price-lists"             element={<RequireAdmin><PriceListsPage /></RequireAdmin>} />
+        <Route path="admin/customer-categories"     element={<RequireAdmin><CustomerCategoriesPage /></RequireAdmin>} />
+        <Route path="admin/retail-prices"           element={<RequireAdmin><RetailPricesPage /></RequireAdmin>} />
+        <Route path="admin/price-lists"             element={<Navigate to="/o2c" replace />} />
         <Route path="admin/exchange-rates"          element={<RequireAdmin><ExchangeRatesPage /></RequireAdmin>} />
         <Route path="settings" element={
           <RequireAdmin><SettingsPage /></RequireAdmin>
