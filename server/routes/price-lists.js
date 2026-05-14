@@ -211,4 +211,75 @@ router.delete('/:id/contacts/:cid', requirePermission('price_lists', 'update'), 
   return res.json({ success: true, message: 'Contact removed from price list.' });
 }));
 
+// ── GET /api/price-lists/:id/items ───────────────────────────
+// All products for this org with their price in this list (null if not set)
+router.get('/:id/items', asyncHandler(async (req, res) => {
+  await poolConnect;
+  const plId  = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+
+  const plCheck = await pool.request()
+    .input('id', sql.Int, plId).input('org_id', sql.Int, orgId)
+    .query('SELECT id FROM price_lists WHERE id=@id AND org_id=@org_id');
+  if (!plCheck.recordset.length) return res.status(404).json({ success: false, error: 'Not found.' });
+
+  const rows = await pool.request()
+    .input('pl_id', sql.Int, plId)
+    .input('org_id', sql.Int, orgId)
+    .query(`
+      SELECT p.id, p.product_code, p.name, p.default_sales_price,
+             cat.name AS category_name,
+             pli.unit_price, pli.min_qty
+      FROM products p
+      LEFT JOIN product_categories cat ON cat.id = p.category_id
+      LEFT JOIN price_list_items pli
+             ON pli.product_id = p.id AND pli.price_list_id = @pl_id
+      WHERE p.org_id = @org_id AND p.is_active = 1
+      ORDER BY cat.name, p.name
+    `);
+  res.json({ success: true, data: rows.recordset });
+}));
+
+// ── POST /api/price-lists/:id/items/bulk ─────────────────────
+// Upsert or delete multiple price_list_items in one call
+router.post('/:id/items/bulk', requirePermission('price_lists', 'update'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const plId  = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+  const { prices } = req.body; // [{ product_id, unit_price (null=delete), min_qty }]
+
+  if (!Array.isArray(prices) || prices.length === 0)
+    return res.status(400).json({ success: false, error: 'prices array required.' });
+
+  const plCheck = await pool.request()
+    .input('id', sql.Int, plId).input('org_id', sql.Int, orgId)
+    .query('SELECT id FROM price_lists WHERE id=@id AND org_id=@org_id');
+  if (!plCheck.recordset.length) return res.status(404).json({ success: false, error: 'Not found.' });
+
+  await Promise.all(prices.map(async entry => {
+    if (entry.unit_price == null) {
+      await pool.request()
+        .input('pl_id',      sql.Int, plId)
+        .input('product_id', sql.Int, entry.product_id)
+        .query('DELETE FROM price_list_items WHERE price_list_id=@pl_id AND product_id=@product_id');
+      return;
+    }
+    await pool.request()
+      .input('pl_id',      sql.Int,           plId)
+      .input('product_id', sql.Int,           entry.product_id)
+      .input('unit_price', sql.Decimal(18,4), parseFloat(entry.unit_price))
+      .input('min_qty',    sql.Decimal(18,4), parseFloat(entry.min_qty) || 1)
+      .query(`
+        IF EXISTS (SELECT 1 FROM price_list_items WHERE price_list_id=@pl_id AND product_id=@product_id)
+          UPDATE price_list_items SET unit_price=@unit_price, min_qty=@min_qty
+          WHERE price_list_id=@pl_id AND product_id=@product_id
+        ELSE
+          INSERT INTO price_list_items (price_list_id, product_id, unit_price, min_qty)
+          VALUES (@pl_id, @product_id, @unit_price, @min_qty)
+      `);
+  }));
+
+  res.json({ success: true, message: `${prices.length} items saved.` });
+}));
+
 module.exports = router;

@@ -179,9 +179,9 @@ export default function DashboardShell() {
                 <NavItem to="/admin/products/custom-fields"icon={<FieldsIcon />} label="Custom Fields"       collapsed={collapsed} />
                 <NavItem to="/admin/products/uom"           icon={<UomIcon />}       label="Units of Measure"   collapsed={collapsed} />
                 <NavItem to="/admin/field-validation"      icon={<ValidationIcon />} label="Field Validation"   collapsed={collapsed} />
+                <NavItem to="/admin/price-lists"          icon={<DollarIcon />}   label="Price Lists"          collapsed={collapsed} />
                 <NavItem to="/admin/customer-tiers"       icon={<TierIcon />}    label="Customer Tiers"       collapsed={collapsed} />
-                <NavItem to="/admin/customer-categories"  icon={<CatGroupIcon />} label="Customer Categories" collapsed={collapsed} />
-                <NavItem to="/admin/retail-prices"        icon={<PriceTagIcon />} label="Retail Prices"       collapsed={collapsed} />
+                <NavItem to="/admin/customer-categories"  icon={<CatGroupIcon />} label="Customer Categories"  collapsed={collapsed} />
                 <NavItem to="/admin/exchange-rates"       icon={<FxIcon />}       label="Exchange Rates"       collapsed={collapsed} />
                 <NavItem to="/warehouse"                   icon={<WarehouseIcon />}  label="Warehouses"        collapsed={collapsed} />
                 <NavItem to="/warehouse/reports"           icon={<ReportIcon />}     label="Stock Reports"     collapsed={collapsed} />
