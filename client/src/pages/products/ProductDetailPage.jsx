@@ -8,12 +8,14 @@ import RelationshipsTab    from './RelationshipsTab';
 import AiMarketTab         from './AiMarketTab';
 import StockTab            from './StockTab';
 import ProductHistoryTab   from './ProductHistoryTab';
+import SourcingTab         from './SourcingTab';
 import styles from './ProductDetailPage.module.css';
 
 const TABS = [
   { key: 'overview',   label: 'Overview'       },
   { key: 'ai_market',  label: 'AI Market Analysis' },
   { key: 'suppliers',  label: 'Suppliers'      },
+  { key: 'sourcing',   label: 'Sourcing'       },
   { key: 'packaging',  label: 'Packaging'      },
   { key: 'images',     label: 'Images'         },
   { key: 'documents',  label: 'Documents'      },
@@ -591,7 +593,7 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-sub)', marginTop: 6 }}>
-                  Lead time, MOQ and order multiple are managed per supplier in the <button type="button" className="btn-link" onClick={() => setActiveTab('suppliers')}>Suppliers tab</button>.
+                  Lead time, MOQ and order multiple are managed per supplier in the <button type="button" className="btn-link" onClick={() => setActiveTab('suppliers')}>Suppliers tab</button>. PIRs and pricing conditions are managed in the <button type="button" className="btn-link" onClick={() => setActiveTab('sourcing')}>Sourcing tab</button>.
                 </div>
               </div>
 
@@ -897,6 +899,16 @@ export default function ProductDetailPage() {
                 const r = await productsApi.getSuppliers(id);
                 setProductSuppliers(r.data.data || []);
               }}
+            />
+          </div>
+        )}
+
+        {/* ── SOURCING TAB ── */}
+        {!isNew && activeTab === 'sourcing' && (
+          <div className={styles.tabContent}>
+            <SourcingTab
+              productId={id}
+              vendors={[]} // pass suppliers list when available
             />
           </div>
         )}

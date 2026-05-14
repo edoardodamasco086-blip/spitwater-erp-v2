@@ -50,6 +50,8 @@ const o2cSORoutes             = require('./routes/o2cSO');
 const o2cPricingRoutes        = require('./routes/o2cPricing');
 const o2cOutboundRoutes          = require('./routes/o2cOutbound');
 const customerCategoriesRoutes   = require('./routes/customerCategories');
+const pirRoutes                  = require('./routes/pir');
+const bpRoutes                   = require('./routes/bpAddresses');
 
 // ── Create app ────────────────────────────────────────────────
 const app  = express();
@@ -154,6 +156,8 @@ app.use('/api/o2c/so',                o2cSORoutes);
 app.use('/api/o2c/pricing',           o2cPricingRoutes);
 app.use('/api/o2c/outbound',          o2cOutboundRoutes);
 app.use('/api/customer-categories',  customerCategoriesRoutes);
+app.use('/api/pir',                  pirRoutes);
+app.use('/api/bp',                   bpRoutes);
 
 // ── Serve uploaded files (images, documents) ─────────────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

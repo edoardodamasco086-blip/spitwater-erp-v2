@@ -445,7 +445,7 @@ router.get('/', requirePermission('products','read'), asyncHandler(async (req, r
           p.warranty_months,
           p.weight_kg, p.primary_image_url,
           uom.code AS uom_code, uom.name AS uom_name,
-          p.min_stock_level,
+          p.min_stock_level, p.tax_classification,
           ISNULL(SUM(sl.qty_on_hand), 0) AS total_stock,
           p.created_at, p.updated_at
         FROM products p
@@ -459,7 +459,7 @@ router.get('/', requirePermission('products','read'), asyncHandler(async (req, r
           p.retail_price, p.default_sales_price, p.default_purchase_price,
           p.last_cost, p.fifo_stock_value, p.tracking_type, p.is_active,
           p.warranty_months, p.weight_kg, p.primary_image_url,
-          uom.code, uom.name, p.min_stock_level, p.created_at, p.updated_at
+          uom.code, uom.name, p.min_stock_level, p.tax_classification, p.created_at, p.updated_at
         ORDER BY p.name ASC
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       `),
@@ -764,7 +764,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
              supplier_part_number, lead_time_days, min_order_qty, order_multiple,
              min_stock_level, max_stock_level, reorder_qty,
              warranty_months, extended_warranty_months, warranty_terms_text,
-             weight_kg, length_cm, width_cm, height_cm, is_active
+             weight_kg, length_cm, width_cm, height_cm, is_active, tax_classification
       FROM products WHERE id=@id AND org_id=@org_id AND is_void=0
     `);
   if (!check.recordset.length) return res.status(404).json({ success: false, error: 'Product not found.' });
@@ -778,7 +778,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     min_stock_level, max_stock_level, reorder_qty,
     warranty_months, extended_warranty_months, warranty_terms_text,
     weight_kg, length_cm, width_cm, height_cm,
-    is_active,
+    is_active, tax_classification,
   } = req.body;
 
   const VALID_PRODUCT_TYPES = ['product', 'service', 'component', 'kit'];
@@ -850,6 +850,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     .input('width_cm',                  sql.Decimal(10,2),    width_cm                  ?? null)
     .input('height_cm',                 sql.Decimal(10,2),    height_cm                 ?? null)
     .input('is_active',                 sql.Bit,              is_active != null ? (is_active ? 1 : 0) : null)
+    .input('tax_classification',        sql.VarChar(20),      tax_classification || null)
     .query(`
       UPDATE products SET
         barcode                  = COALESCE(@barcode,                  barcode),
@@ -880,6 +881,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
         width_cm                 = COALESCE(@width_cm,                 width_cm),
         height_cm                = COALESCE(@height_cm,                height_cm),
         is_active                = COALESCE(@is_active,                is_active),
+        tax_classification       = COALESCE(@tax_classification,       tax_classification),
         updated_at               = GETDATE()
       WHERE id = @id
     `);
@@ -912,6 +914,7 @@ router.patch('/:id', requirePermission('products','update'), asyncHandler(async 
     ['width_cm',                 width_cm,                'decimal'],
     ['height_cm',                height_cm,               'decimal'],
     ['is_active',                is_active,               'bool'],
+    ['tax_classification',       tax_classification,      'text'],
   ];
   const changes = [];
   for (const [field, newVal, dataType] of TRACKED) {
