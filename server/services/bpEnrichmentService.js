@@ -2,16 +2,16 @@
 // ============================================================
 // services/bpEnrichmentService.js
 //
-// BP AI Enrichment — website-first, Claude-verified pipeline:
+// BP AI Enrichment — website-first, Claude-verified pipeline.
 //
-//  Phase 1 (if website known): fetch the company's own website
-//          and extract structured data directly from it.
-//          Confidence is high because it's the authoritative source.
+// When ANTHROPIC_API_KEY is set (recommended):
+//   Phase 1: fetch company website → Claude extracts structured fields
+//   Phase 2: SerpApi search → Claude verifies results match this company
 //
-//  Phase 2: SerpApi search (AU-biased) for any fields still missing.
-//          Results are passed to Claude along with all known BP
-//          data so Claude can filter out results about the wrong
-//          company before anything is proposed.
+// When ANTHROPIC_API_KEY is NOT set (fallback):
+//   Phase 1: fetch company website → regex extracts email/phone,
+//            domain-validates email, industry via keyword scan
+//   Phase 2: SerpApi search filtered by known domain → regex extraction
 //
 // All findings are staged in bp_enrichment_proposals for human
 // review — nothing is written directly to business_partners.
@@ -22,11 +22,15 @@ const axios = require('axios');
 const SERP_API_KEY      = process.env.SERP_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-const ANTHROPIC_HEADERS = {
-  'x-api-key':         ANTHROPIC_API_KEY,
-  'anthropic-version': '2023-06-01',
-  'Content-Type':      'application/json',
-};
+const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const PHONE_RE = /(\+?61[-\s]?|0)[2-9]\d{2}[-\s]?\d{3}[-\s]?\d{3,4}|(\+?61[-\s]?|0)4\d{2}[-\s]?\d{3}[-\s]?\d{3}/g;
+
+const INDUSTRIES = [
+  'manufacturing', 'retail', 'wholesale', 'technology', 'construction',
+  'mining', 'agriculture', 'transport', 'logistics', 'healthcare',
+  'hospitality', 'finance', 'insurance', 'real estate', 'education',
+  'energy', 'utilities', 'media', 'legal', 'accounting',
+];
 
 // ── Helpers ───────────────────────────────────────────────────
 function domainOf(url) {
@@ -48,100 +52,133 @@ function buildKnownContext(bp) {
   return lines.join('\n');
 }
 
-// ── Phase 1: fetch known website and extract via Claude ───────
-async function extractFromWebsite(bp) {
-  if (!ANTHROPIC_API_KEY || !bp.website) return [];
+function stripHtml(raw) {
+  return (raw || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  let html = '';
-  try {
-    const res = await axios.get(
-      bp.website.startsWith('http') ? bp.website : `https://${bp.website}`,
-      { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ERPBot/1.0)' } }
-    );
-    // Strip tags, keep first 6 000 chars so the prompt stays small
-    html = (res.data || '')
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .slice(0, 6000);
-  } catch (e) {
-    console.warn(`[BP Enrich] Could not fetch website ${bp.website}: ${e.message}`);
-    return [];
+// ── Regex fallback extraction (no Anthropic) ─────────────────
+function regexExtract(text, bp, sourceUrl) {
+  const proposals = [];
+  const domain = bp.website ? domainOf(bp.website) : null;
+
+  // Email — prefer domain-matching, filter obvious noise
+  if (!bp.email) {
+    const emails = [...new Set(text.match(EMAIL_RE) || [])]
+      .filter(e => !e.includes('example') && !e.includes('test') && !e.includes('sentry'));
+    // Prefer email whose domain matches the known website
+    const preferred = domain
+      ? (emails.find(e => e.endsWith('@' + domain)) || emails[0])
+      : emails[0];
+    if (preferred) proposals.push({ field_name: 'email', proposed_value: preferred, sourceUrl, confidence: domain && preferred.endsWith('@' + domain) ? 80 : 55 });
   }
 
-  if (!html.trim()) return [];
+  // Phone
+  if (!bp.phone) {
+    const phones = [...new Set(text.match(PHONE_RE) || [])];
+    if (phones[0]) proposals.push({ field_name: 'phone', proposed_value: phones[0].replace(/\s+/g, ' ').trim(), sourceUrl, confidence: 60 });
+  }
 
+  // Industry — keyword scan
+  if (!bp.industry) {
+    const lower = text.toLowerCase();
+    const found = INDUSTRIES.find(ind => lower.includes(ind));
+    if (found) proposals.push({
+      field_name: 'industry',
+      proposed_value: found.charAt(0).toUpperCase() + found.slice(1),
+      sourceUrl,
+      confidence: 45,
+    });
+  }
+
+  return proposals;
+}
+
+// ── Phase 1: fetch website ────────────────────────────────────
+async function fetchWebsiteText(website) {
+  try {
+    const url = website.startsWith('http') ? website : `https://${website}`;
+    const res = await axios.get(url, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ERPBot/1.0)' },
+      maxContentLength: 2 * 1024 * 1024,
+    });
+    const text = stripHtml(res.data).slice(0, 6000);
+    console.log(`[BP Enrich P1] Website fetched OK — ${text.length} chars`);
+    return text;
+  } catch (e) {
+    console.warn(`[BP Enrich P1] Could not fetch website ${website}: ${e.message}`);
+    return null;
+  }
+}
+
+// Phase 1 with Claude
+async function extractFromWebsiteWithClaude(text, bp) {
   const knownContext = buildKnownContext(bp);
   const prompt = `You are an ERP data assistant. A business partner record has these known values:
 ${knownContext}
 
-Below is the text content of their official website (${bp.website}).
+Below is the text content scraped from their official website (${bp.website}).
 Extract only fields that are clearly present and belong to THIS specific company.
-Return a JSON array of objects with these keys: field_name, proposed_value, confidence (0-100).
+Return a JSON array of objects: { field_name, proposed_value, confidence (0-100) }
 
-Fields you may propose (skip if already known or not found):
-- industry: their primary industry/sector
-- phone: main office phone number
-- email: main contact email (prefer generic like info@, sales@, not personal)
-- abn: Australian Business Number if shown
+Fields you may propose (skip if the value is already in "known values" above, or not found):
+- industry: their primary industry/sector (one word or short phrase)
+- phone: main office phone number (Australian format)
+- email: main contact email (prefer generic like info@, sales@)
+- abn: Australian Business Number if shown on the page
 - ai_summary: 2-3 sentence professional summary of what this company does
 
 Rules:
-- Only include a field if you are confident it belongs to THIS company
+- Do not include fields already listed in known values
 - Do not hallucinate — if not clearly on the page, omit it
-- Phone numbers: Australian format preferred
-- Return valid JSON only, no markdown fences
+- Return ONLY a valid JSON array, no markdown, no explanation
 
 Website text:
-${html}`;
+${text}`;
 
-  try {
-    const r = await axios.post('https://api.anthropic.com/v1/messages', {
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 600,
-      messages:   [{ role: 'user', content: prompt }],
-    }, { headers: ANTHROPIC_HEADERS, timeout: 25000 });
+  const r = await axios.post('https://api.anthropic.com/v1/messages', {
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 600,
+    messages:   [{ role: 'user', content: prompt }],
+  }, {
+    headers: {
+      'x-api-key':         ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type':      'application/json',
+    },
+    timeout: 25000,
+  });
 
-    const raw = r.data?.content?.[0]?.text?.trim() || '[]';
-    const parsed = JSON.parse(raw.replace(/^```json\s*/i, '').replace(/```$/, ''));
-    if (!Array.isArray(parsed)) return [];
-
-    // Tag source
-    return parsed
-      .filter(p => p.field_name && p.proposed_value)
-      .map(p => ({
-        ...p,
-        source_url:     bp.website,
-        source_snippet: `Extracted from company website ${bp.website}`,
-        confidence:     Math.min(95, Math.max(0, Number(p.confidence) || 70)),
-      }));
-  } catch (e) {
-    console.warn('[BP Enrich] Claude website extraction failed:', e.message);
-    return [];
-  }
+  const raw = r.data?.content?.[0]?.text?.trim() || '[]';
+  console.log(`[BP Enrich P1] Claude raw: ${raw.slice(0, 300)}`);
+  const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/, '').trim();
+  const parsed = JSON.parse(jsonStr);
+  if (!Array.isArray(parsed)) return [];
+  console.log(`[BP Enrich P1] Claude found: ${parsed.map(p => p.field_name).join(', ') || 'none'}`);
+  return parsed.filter(p => p.field_name && p.proposed_value).map(p => ({
+    field_name:     p.field_name,
+    proposed_value: String(p.proposed_value),
+    source_url:     bp.website,
+    source_snippet: `Extracted from company website ${bp.website}`,
+    confidence:     Math.min(95, Math.max(0, Number(p.confidence) || 70)),
+  }));
 }
 
-// ── Phase 2: SerpApi search + Claude verification ─────────────
-async function searchAndVerify(bp, alreadyProposedFields) {
+// ── Phase 2: SerpApi search ───────────────────────────────────
+async function runSerpSearch(searchName, bp) {
   if (!SERP_API_KEY) return [];
-
-  const searchName = bp.bp_type === 'organization'
-    ? (bp.trading_name || bp.legal_entity_name)
-    : `${bp.first_name || ''} ${bp.last_name || ''}`.trim();
-
-  if (!searchName) return [];
-
   const domain = bp.website ? domainOf(bp.website) : null;
 
-  // Build query — if we have a domain, constrain to it for at least one search
+  // Domain-constrained query only makes sense if the site is indexed
   const queries = domain
-    ? [
-        `site:${domain} contact phone email industry`,
-        `"${searchName}" Australia contact phone email industry`,
-      ]
+    ? [`"${searchName}" Australia contact phone email industry`]
     : [
-        `"${searchName}" Australia company contact phone email`,
+        `"${searchName}" Australia company contact email phone`,
         `"${searchName}" Australia official website LinkedIn`,
       ];
 
@@ -149,28 +186,27 @@ async function searchAndVerify(bp, alreadyProposedFields) {
   for (const q of queries) {
     try {
       const res = await axios.get('https://serpapi.com/search', {
-        params: { engine: 'google', q, api_key: SERP_API_KEY, num: 5, gl: 'au', hl: 'en', location: 'Australia' },
+        params: { engine: 'google', q, api_key: SERP_API_KEY, num: 8, gl: 'au', hl: 'en', location: 'Australia' },
         timeout: 15000,
       });
-      for (const r of (res.data.organic_results || [])) {
-        allResults.push({ url: r.link || '', title: r.title || '', snippet: r.snippet || '' });
-      }
+      const hits = res.data.organic_results || [];
+      console.log(`[BP Enrich P2] SerpApi "${q}" → ${hits.length} results`);
+      for (const r of hits) allResults.push({ url: r.link || '', title: r.title || '', snippet: r.snippet || '' });
     } catch (e) {
-      console.warn(`[BP Enrich] SerpApi query failed ("${q}"): ${e.message}`);
+      console.warn(`[BP Enrich P2] SerpApi failed ("${q}"): ${e.message}`);
     }
   }
+  return allResults;
+}
 
-  if (allResults.length === 0 || !ANTHROPIC_API_KEY) return [];
-
-  // Let Claude cross-reference and verify
+// Phase 2 with Claude verification
+async function verifyWithClaude(allResults, bp, alreadyProposedFields) {
   const knownContext = buildKnownContext(bp);
-  const resultsText = allResults
-    .slice(0, 8)
+  const resultsText = allResults.slice(0, 8)
     .map((r, i) => `[${i + 1}] URL: ${r.url}\nTitle: ${r.title}\nSnippet: ${r.snippet}`)
     .join('\n\n');
-
-  const alreadyDone = alreadyProposedFields.length > 0
-    ? `\nSkip these fields (already found): ${alreadyProposedFields.join(', ')}`
+  const skipNote = alreadyProposedFields.length
+    ? `\nSkip these fields (already found in Phase 1): ${alreadyProposedFields.join(', ')}`
     : '';
 
   const prompt = `You are an ERP data assistant enriching a business partner record.
@@ -178,40 +214,76 @@ async function searchAndVerify(bp, alreadyProposedFields) {
 Known data about this company:
 ${knownContext}
 
-Search results from Google (some may be about a DIFFERENT company with a similar name):
+Search results (some may be about a DIFFERENT company with a similar name):
 ${resultsText}
 
-Task: Identify which search results genuinely refer to THIS specific company (cross-check against the known website domain, ABN, name, etc.). Then extract missing data only from confirmed-matching results.${alreadyDone}
+Task: Identify which results genuinely refer to THIS company (cross-check against known website domain, name, ABN). Extract missing data ONLY from confirmed-matching results.${skipNote}
 
-Fields you may propose (only if confidently from THIS company):
-- industry, phone, email, website (if not already known), linkedin_url, ai_summary
+Fields to propose: industry, phone, email, website (if unknown), linkedin_url, ai_summary
 
-Return a JSON array with objects: { field_name, proposed_value, source_url, source_snippet (max 200 chars), confidence (0-100) }
-If no result clearly matches this company, return an empty array [].
-Return valid JSON only — no markdown, no explanation.`;
+Return a JSON array: [{ field_name, proposed_value, source_url, source_snippet (max 200 chars), confidence (0-100) }]
+If no result clearly matches this company, return [].
+Return ONLY valid JSON — no markdown, no explanation.`;
 
-  try {
-    const r = await axios.post('https://api.anthropic.com/v1/messages', {
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 800,
-      messages:   [{ role: 'user', content: prompt }],
-    }, { headers: ANTHROPIC_HEADERS, timeout: 25000 });
+  const r = await axios.post('https://api.anthropic.com/v1/messages', {
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 800,
+    messages:   [{ role: 'user', content: prompt }],
+  }, {
+    headers: {
+      'x-api-key':         ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type':      'application/json',
+    },
+    timeout: 25000,
+  });
 
-    const raw = r.data?.content?.[0]?.text?.trim() || '[]';
-    const parsed = JSON.parse(raw.replace(/^```json\s*/i, '').replace(/```$/, ''));
-    if (!Array.isArray(parsed)) return [];
+  const raw = r.data?.content?.[0]?.text?.trim() || '[]';
+  console.log(`[BP Enrich P2] Claude raw: ${raw.slice(0, 300)}`);
+  const jsonStr = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/, '').trim();
+  const parsed = JSON.parse(jsonStr);
+  if (!Array.isArray(parsed)) return [];
+  console.log(`[BP Enrich P2] Claude verified: ${parsed.map(p => p.field_name).join(', ') || 'none'}`);
+  return parsed.filter(p => p.field_name && p.proposed_value).map(p => ({
+    ...p,
+    proposed_value: String(p.proposed_value),
+    confidence:     Math.min(90, Math.max(0, Number(p.confidence) || 50)),
+    source_snippet: (p.source_snippet || '').slice(0, 500),
+  }));
+}
 
-    return parsed
-      .filter(p => p.field_name && p.proposed_value)
-      .map(p => ({
-        ...p,
-        confidence:     Math.min(90, Math.max(0, Number(p.confidence) || 50)),
-        source_snippet: (p.source_snippet || '').slice(0, 500),
-      }));
-  } catch (e) {
-    console.warn('[BP Enrich] Claude search verification failed:', e.message);
-    return [];
+// Phase 2 regex fallback — filter snippets by domain match
+function regexFallbackFromSearch(allResults, bp) {
+  const domain = bp.website ? domainOf(bp.website) : null;
+  const proposals = [];
+
+  for (const { url, snippet } of allResults) {
+    // If we have a known domain, only trust results from that domain
+    if (domain && url && !url.includes(domain) && !snippet.toLowerCase().includes(domain)) continue;
+
+    const extracted = regexExtract(snippet, bp, url);
+    for (const p of extracted) {
+      if (!proposals.find(existing => existing.field_name === p.field_name)) {
+        proposals.push({ ...p, source_url: url, source_snippet: snippet.slice(0, 300) });
+      }
+    }
+    if (proposals.length >= 3) break;
   }
+
+  // If no domain-matched results and no domain known, try first 3 results
+  if (proposals.length === 0 && !domain) {
+    for (const { url, snippet } of allResults.slice(0, 3)) {
+      const extracted = regexExtract(snippet, bp, url);
+      for (const p of extracted) {
+        if (!proposals.find(existing => existing.field_name === p.field_name)) {
+          proposals.push({ ...p, source_url: url, source_snippet: snippet.slice(0, 300) });
+        }
+      }
+    }
+  }
+
+  console.log(`[BP Enrich P2] Regex fallback found: ${proposals.map(p => p.field_name).join(', ') || 'none'}`);
+  return proposals;
 }
 
 // ── Main export ───────────────────────────────────────────────
@@ -226,33 +298,59 @@ async function enrich(bp, orgId, triggeredBy, pool, sql) {
   }
 
   if (!SERP_API_KEY && !ANTHROPIC_API_KEY) {
-    console.warn('[BP Enrich] Neither SERP_API_KEY nor ANTHROPIC_API_KEY set — skipping enrichment');
+    console.warn('[BP Enrich] Neither SERP_API_KEY nor ANTHROPIC_API_KEY set — skipping');
     return;
+  }
+
+  if (!ANTHROPIC_API_KEY) {
+    console.warn('[BP Enrich] ANTHROPIC_API_KEY not set — using regex fallback (lower quality). Set it in .env for AI-verified proposals.');
   }
 
   console.log(`[BP Enrich] Starting enrichment for bp.id=${bp.id} "${searchName}"...`);
 
   const allProposals = [];
 
-  // Phase 1: extract from known website (high-confidence, correct company guaranteed)
+  // ── Phase 1: website extraction ───────────────────────────
   if (bp.website) {
-    console.log(`[BP Enrich] Phase 1: extracting from website ${bp.website}`);
-    const websiteProposals = await extractFromWebsite(bp);
-    allProposals.push(...websiteProposals);
-    console.log(`[BP Enrich] Phase 1: found ${websiteProposals.length} field(s)`);
+    console.log(`[BP Enrich] Phase 1: extracting from ${bp.website}`);
+    const text = await fetchWebsiteText(bp.website);
+    if (text) {
+      try {
+        if (ANTHROPIC_API_KEY) {
+          const p1 = await extractFromWebsiteWithClaude(text, bp);
+          allProposals.push(...p1);
+        } else {
+          const p1 = regexExtract(text, bp, bp.website);
+          allProposals.push(...p1);
+        }
+      } catch (e) {
+        console.warn('[BP Enrich P1] Extraction error:', e.message);
+      }
+    }
+    console.log(`[BP Enrich] Phase 1: found ${allProposals.length} field(s)`);
   }
 
-  // Phase 2: search for remaining missing fields
-  const foundFields = new Set(allProposals.map(p => p.field_name));
+  // ── Phase 2: search for remaining fields ──────────────────
   console.log(`[BP Enrich] Phase 2: web search for remaining fields`);
-  const searchProposals = await searchAndVerify(bp, [...foundFields]);
-  // Don't overwrite high-confidence website proposals with lower-confidence search results
-  for (const sp of searchProposals) {
-    if (!foundFields.has(sp.field_name)) allProposals.push(sp);
-  }
-  console.log(`[BP Enrich] Phase 2: found ${searchProposals.length} additional field(s)`);
+  const foundFields = new Set(allProposals.map(p => p.field_name));
+  const searchResults = await runSerpSearch(searchName, bp);
 
-  // Deduplicate against already-pending proposals
+  if (searchResults.length > 0) {
+    try {
+      const p2 = ANTHROPIC_API_KEY
+        ? await verifyWithClaude(searchResults, bp, [...foundFields])
+        : regexFallbackFromSearch(searchResults, bp);
+      // Don't overwrite Phase 1 results with Phase 2 results
+      for (const p of p2) {
+        if (!foundFields.has(p.field_name)) allProposals.push(p);
+      }
+    } catch (e) {
+      console.warn('[BP Enrich P2] Error:', e.message);
+    }
+  }
+  console.log(`[BP Enrich] Phase 2: total proposals so far: ${allProposals.length}`);
+
+  // ── Deduplicate against already-pending proposals ─────────
   const existingRes = await pool.request()
     .input('bp_id', sql.Int, bp.id)
     .query(`SELECT field_name FROM bp_enrichment_proposals WHERE bp_id=@bp_id AND status='pending'`);
