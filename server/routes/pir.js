@@ -59,14 +59,20 @@ router.get('/source-list', requirePermission('products', 'read'), asyncHandler(a
     .input('org_id',     sql.Int, orgId)
     .input('product_id', sql.Int, productId || null)
     .query(`
-      SELECT sl.id, sl.product_id, sl.vendor_id, sl.pir_id,
+      SELECT sl.id, sl.product_id, sl.vendor_id, sl.vendor_bp_id, sl.pir_id,
              sl.rank, sl.is_preferred, sl.is_blocked,
              sl.valid_from, sl.valid_to,
              p.name AS product_name, p.product_code,
-             c.full_name AS vendor_name
+             c.full_name AS vendor_name,
+             CASE bp.bp_type
+               WHEN 'person'
+                 THEN LTRIM(RTRIM(COALESCE(bp.first_name, '') + ' ' + COALESCE(bp.last_name, '')))
+               ELSE COALESCE(bp.trading_name, bp.legal_entity_name)
+             END AS vendor_bp_display_name
       FROM item_source_list sl
-      JOIN products p  ON p.id = sl.product_id
-      JOIN contacts c  ON c.id = sl.vendor_id
+      JOIN products p   ON p.id  = sl.product_id
+      JOIN contacts c   ON c.id  = sl.vendor_id
+      LEFT JOIN business_partners bp ON bp.id = sl.vendor_bp_id
       WHERE sl.org_id = @org_id
         AND (@product_id IS NULL OR sl.product_id = @product_id)
       ORDER BY sl.product_id, sl.rank ASC
@@ -79,27 +85,45 @@ router.get('/source-list', requirePermission('products', 'read'), asyncHandler(a
 router.post('/source-list', requirePermission('products', 'update'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const { product_id, vendor_id, pir_id, rank, is_preferred, is_blocked, valid_from, valid_to } = req.body;
+  const { product_id, vendor_id, vendor_bp_id, pir_id, rank, is_preferred, is_blocked, valid_from, valid_to } = req.body;
 
-  if (!product_id || !vendor_id) {
-    return res.status(400).json({ success: false, error: 'product_id and vendor_id are required.' });
+  if (!product_id || (!vendor_id && !vendor_bp_id)) {
+    return res.status(400).json({ success: false, error: 'product_id and either vendor_id or vendor_bp_id are required.' });
   }
 
+  // Resolve vendor_id from BP if only vendor_bp_id provided
+  let resolvedVendorId  = vendor_id     ? parseInt(vendor_id,     10) : null;
+  let resolvedVendorBpId = vendor_bp_id ? parseInt(vendor_bp_id,  10) : null;
+
+  if (resolvedVendorBpId && !resolvedVendorId) {
+    const bpRes = await pool.request()
+      .input('bp_id',  sql.Int, resolvedVendorBpId)
+      .input('org_id', sql.Int, orgId)
+      .query('SELECT legacy_contact_id FROM business_partners WHERE id=@bp_id AND org_id=@org_id AND is_active=1');
+    if (!bpRes.recordset.length)
+      return res.status(404).json({ success: false, error: 'Business partner not found.' });
+    resolvedVendorId = bpRes.recordset[0].legacy_contact_id;
+  }
+
+  if (!resolvedVendorId)
+    return res.status(400).json({ success: false, error: 'Could not resolve a vendor contact. Provide a valid vendor_id or vendor_bp_id.' });
+
   const result = await pool.request()
-    .input('org_id',       sql.Int,      orgId)
-    .input('product_id',   sql.Int,      product_id)
-    .input('vendor_id',    sql.Int,      vendor_id)
-    .input('pir_id',       sql.Int,      pir_id      || null)
-    .input('rank',         sql.Int,      rank        ?? 1)
-    .input('is_preferred', sql.Bit,      is_preferred ? 1 : 0)
-    .input('is_blocked',   sql.Bit,      is_blocked   ? 1 : 0)
-    .input('valid_from',   sql.Date,     valid_from  || null)
-    .input('valid_to',     sql.Date,     valid_to    || null)
+    .input('org_id',        sql.Int,  orgId)
+    .input('product_id',    sql.Int,  product_id)
+    .input('vendor_id',     sql.Int,  resolvedVendorId)
+    .input('vendor_bp_id',  sql.Int,  resolvedVendorBpId || null)
+    .input('pir_id',        sql.Int,  pir_id      || null)
+    .input('rank',          sql.Int,  rank        ?? 1)
+    .input('is_preferred',  sql.Bit,  is_preferred ? 1 : 0)
+    .input('is_blocked',    sql.Bit,  is_blocked   ? 1 : 0)
+    .input('valid_from',    sql.Date, valid_from  || null)
+    .input('valid_to',      sql.Date, valid_to    || null)
     .query(`
       INSERT INTO item_source_list
-        (org_id, product_id, vendor_id, pir_id, rank, is_preferred, is_blocked, valid_from, valid_to)
+        (org_id, product_id, vendor_id, vendor_bp_id, pir_id, rank, is_preferred, is_blocked, valid_from, valid_to)
       OUTPUT INSERTED.id
-      VALUES (@org_id, @product_id, @vendor_id, @pir_id, @rank, @is_preferred, @is_blocked, @valid_from, @valid_to)
+      VALUES (@org_id, @product_id, @vendor_id, @vendor_bp_id, @pir_id, @rank, @is_preferred, @is_blocked, @valid_from, @valid_to)
     `);
 
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id }, message: 'Source list entry created.' });
@@ -186,11 +210,18 @@ router.get('/', requirePermission('products', 'read'), asyncHandler(async (req, 
     .query(`
       SELECT pir.*, p.name AS product_name, p.product_code,
              c.full_name AS vendor_name,
-             u.code AS purchase_uom_code
+             u.code AS purchase_uom_code,
+             pir.vendor_bp_id,
+             CASE bp.bp_type
+               WHEN 'person'
+                 THEN LTRIM(RTRIM(COALESCE(bp.first_name, '') + ' ' + COALESCE(bp.last_name, '')))
+               ELSE COALESCE(bp.trading_name, bp.legal_entity_name)
+             END AS vendor_bp_name
       FROM purchase_info_records pir
       JOIN products p ON p.id = pir.product_id
       JOIN contacts c ON c.id = pir.vendor_id
       LEFT JOIN units_of_measure u ON u.id = pir.purchase_uom_id
+      LEFT JOIN business_partners bp ON bp.id = pir.vendor_bp_id
       WHERE pir.org_id = @org_id
         AND (@product_id IS NULL OR pir.product_id = @product_id)
         AND (@vendor_id  IS NULL OR pir.vendor_id  = @vendor_id)
@@ -205,31 +236,80 @@ router.post('/', requirePermission('products', 'update'), asyncHandler(async (re
   await poolConnect;
   const orgId = req.user.orgId;
   const {
-    product_id, vendor_id, purchase_uom_id,
+    product_id, vendor_id, vendor_bp_id, purchase_uom_id,
     lead_time_days, moq, vendor_material_number, is_active = true,
   } = req.body;
 
-  if (!product_id || !vendor_id) {
-    return res.status(400).json({ success: false, error: 'product_id and vendor_id are required.' });
+  if (!product_id || (!vendor_id && !vendor_bp_id)) {
+    return res.status(400).json({ success: false, error: 'product_id and either vendor_id or vendor_bp_id are required.' });
   }
 
+  // Resolve vendor_id from BP if only vendor_bp_id provided
+  let resolvedVendorId   = vendor_id    ? parseInt(vendor_id,    10) : null;
+  let resolvedVendorBpId = vendor_bp_id ? parseInt(vendor_bp_id, 10) : null;
+
+  if (resolvedVendorBpId && !resolvedVendorId) {
+    const bpRes = await pool.request()
+      .input('bp_id',  sql.Int, resolvedVendorBpId)
+      .input('org_id', sql.Int, orgId)
+      .query('SELECT legacy_contact_id FROM business_partners WHERE id=@bp_id AND org_id=@org_id AND is_active=1');
+    if (!bpRes.recordset.length)
+      return res.status(404).json({ success: false, error: 'Business partner not found.' });
+    resolvedVendorId = bpRes.recordset[0].legacy_contact_id;
+  }
+
+  if (!resolvedVendorId)
+    return res.status(400).json({ success: false, error: 'Could not resolve a vendor contact. Provide a valid vendor_id or vendor_bp_id.' });
+
   const result = await pool.request()
-    .input('org_id',                sql.Int,         orgId)
-    .input('product_id',            sql.Int,         product_id)
-    .input('vendor_id',             sql.Int,         vendor_id)
-    .input('purchase_uom_id',       sql.Int,         purchase_uom_id        || null)
-    .input('lead_time_days',        sql.Int,         lead_time_days         ?? null)
-    .input('moq',                   sql.Decimal(18,4), moq                  ?? null)
-    .input('vendor_material_number', sql.NVarChar(100), vendor_material_number || null)
-    .input('is_active',             sql.Bit,         is_active ? 1 : 0)
+    .input('org_id',                 sql.Int,            orgId)
+    .input('product_id',             sql.Int,            product_id)
+    .input('vendor_id',              sql.Int,            resolvedVendorId)
+    .input('vendor_bp_id',           sql.Int,            resolvedVendorBpId     || null)
+    .input('purchase_uom_id',        sql.Int,            purchase_uom_id        || null)
+    .input('lead_time_days',         sql.Int,            lead_time_days         ?? null)
+    .input('moq',                    sql.Decimal(18,4),  moq                    ?? null)
+    .input('vendor_material_number', sql.NVarChar(100),  vendor_material_number || null)
+    .input('is_active',              sql.Bit,            is_active ? 1 : 0)
     .query(`
       INSERT INTO purchase_info_records
-        (org_id, product_id, vendor_id, purchase_uom_id, lead_time_days, moq, vendor_material_number, is_active, created_at, updated_at)
+        (org_id, product_id, vendor_id, vendor_bp_id, purchase_uom_id, lead_time_days, moq,
+         vendor_material_number, is_active, created_at, updated_at)
       OUTPUT INSERTED.id
-      VALUES (@org_id, @product_id, @vendor_id, @purchase_uom_id, @lead_time_days, @moq, @vendor_material_number, @is_active, GETDATE(), GETDATE())
+      VALUES (@org_id, @product_id, @vendor_id, @vendor_bp_id, @purchase_uom_id, @lead_time_days, @moq,
+              @vendor_material_number, @is_active, GETDATE(), GETDATE())
     `);
 
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id }, message: 'PIR created.' });
+}));
+
+// ── GET /api/pir/:id ─────────────────────────────────────────
+router.get('/:id', requirePermission('products', 'read'), asyncHandler(async (req, res) => {
+  await poolConnect;
+  const pirId = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+
+  const r = await pool.request()
+    .input('id',     sql.Int, pirId)
+    .input('org_id', sql.Int, orgId)
+    .query(`
+      SELECT pir.*, p.name AS product_name, p.product_code,
+             c.full_name AS vendor_name,
+             u.code AS purchase_uom_code,
+             CASE bp.bp_type
+               WHEN 'person' THEN LTRIM(RTRIM(COALESCE(bp.first_name,'') + ' ' + COALESCE(bp.last_name,'')))
+               ELSE COALESCE(bp.trading_name, bp.legal_entity_name)
+             END AS vendor_bp_display_name
+      FROM purchase_info_records pir
+      JOIN products p ON p.id = pir.product_id
+      JOIN contacts c ON c.id = pir.vendor_id
+      LEFT JOIN units_of_measure u ON u.id = pir.purchase_uom_id
+      LEFT JOIN business_partners bp ON bp.id = pir.vendor_bp_id
+      WHERE pir.id = @id AND pir.org_id = @org_id
+    `);
+
+  if (!r.recordset.length) return res.status(404).json({ success: false, error: 'PIR not found.' });
+  return res.json({ success: true, data: r.recordset[0] });
 }));
 
 // ── PATCH /api/pir/:id ───────────────────────────────────────

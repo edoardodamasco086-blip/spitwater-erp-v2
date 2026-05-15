@@ -46,7 +46,9 @@ router.get('/tiers', asyncHandler(async (req, res) => {
     .query(`
       SELECT t.id, t.name, t.description, t.color, t.discount_pct,
              t.is_active, t.sort_order,
-             (SELECT COUNT(*) FROM contact_tiers ct WHERE ct.tier_id=t.id AND ct.org_id=t.org_id) AS contact_count
+             (SELECT COUNT(*) FROM business_partners bp
+              WHERE bp.customer_tier_id = t.id
+                AND bp.is_active = 1) AS contact_count
       FROM customer_tiers t
       WHERE t.org_id = @org_id
       ORDER BY t.sort_order ASC, t.name ASC
@@ -101,62 +103,101 @@ router.patch('/tiers/:id', requirePermission('settings','update'), asyncHandler(
 
 router.delete('/tiers/:id', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
-  const id = parseInt(req.params.id);
-  const count = await pool.request().input('id', sql.Int, id)
-    .query('SELECT COUNT(*) AS n FROM contact_tiers WHERE tier_id=@id');
-  if (count.recordset[0].n > 0)
-    return res.status(409).json({ success: false, error: 'Remove all contacts from this tier first.' });
-  await pool.request().input('id', sql.Int, id).input('org_id', sql.Int, req.user.orgId)
+  const id    = parseInt(req.params.id);
+  const orgId = req.user.orgId;
+
+  // Check BPs assigned (primary) and legacy contact_tiers rows
+  const countRes = await pool.request()
+    .input('id',     sql.Int, id)
+    .input('org_id', sql.Int, orgId)
+    .query(`
+      SELECT
+        (SELECT COUNT(*) FROM business_partners WHERE customer_tier_id = @id AND is_active = 1) AS bp_count,
+        (SELECT COUNT(*) FROM contact_tiers WHERE tier_id = @id) AS legacy_count
+    `);
+  const total = countRes.recordset[0].bp_count + countRes.recordset[0].legacy_count;
+  if (total > 0)
+    return res.status(409).json({ success: false, error: 'Remove all partners/contacts from this tier first.' });
+
+  await pool.request()
+    .input('id',     sql.Int, id)
+    .input('org_id', sql.Int, orgId)
     .query('DELETE FROM customer_tiers WHERE id=@id AND org_id=@org_id');
   return res.json({ success: true, message: 'Tier deleted.' });
 }));
 
-// Contacts in a tier
+// Business partners in a tier
 router.get('/tiers/:id/contacts', asyncHandler(async (req, res) => {
   await poolConnect;
   const rows = await pool.request()
     .input('tier_id', sql.Int, parseInt(req.params.id))
     .input('org_id',  sql.Int, req.user.orgId)
     .query(`
-      SELECT c.id, c.full_name, c.email, c.contact_type, ct.assigned_at
-      FROM contact_tiers ct
-      INNER JOIN contacts c ON c.id = ct.contact_id
-      WHERE ct.tier_id=@tier_id AND ct.org_id=@org_id
-      ORDER BY c.full_name ASC
+      SELECT bp.id AS bp_id, bp.bp_type,
+        CASE bp.bp_type
+          WHEN 'person'
+            THEN LTRIM(RTRIM(COALESCE(bp.first_name, '') + ' ' + COALESCE(bp.last_name, '')))
+          ELSE COALESCE(bp.trading_name, bp.legal_entity_name)
+        END AS display_name,
+        bp.email, bp.bp_role
+      FROM business_partners bp
+      WHERE bp.customer_tier_id = @tier_id
+        AND bp.org_id  = @org_id
+        AND bp.is_active = 1
+      ORDER BY display_name ASC
     `);
   return res.json({ success: true, data: rows.recordset });
 }));
 
+// Assign a BP to a tier.
+// Accepts { bp_id } (preferred) or legacy { contactId } for backward compat.
 router.post('/tiers/:id/contacts', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
-  const { contactId } = req.body;
-  if (!contactId) return res.status(400).json({ success: false, error: 'contactId required.' });
+  const tierId = parseInt(req.params.id);
+  const orgId  = req.user.orgId;
 
-  // Upsert — a contact can only be in one tier at a time
+  let bpId = req.body.bp_id ? parseInt(req.body.bp_id, 10) : null;
+
+  // Legacy path: contactId → resolve BP
+  if (!bpId && req.body.contactId) {
+    const legacyRes = await pool.request()
+      .input('contact_id', sql.Int, parseInt(req.body.contactId, 10))
+      .input('org_id',     sql.Int, orgId)
+      .query('SELECT id FROM business_partners WHERE legacy_contact_id = @contact_id AND org_id = @org_id AND is_active = 1');
+    if (legacyRes.recordset.length) bpId = legacyRes.recordset[0].id;
+  }
+
+  if (!bpId) return res.status(400).json({ success: false, error: 'bp_id required.' });
+
+  // A BP can only be in one tier at a time — simply set it
   await pool.request()
-    .input('org_id',     sql.Int, req.user.orgId)
-    .input('contact_id', sql.Int, parseInt(contactId))
-    .input('tier_id',    sql.Int, parseInt(req.params.id))
-    .input('by',         sql.Int, req.user.userId)
+    .input('org_id',   sql.Int, orgId)
+    .input('bp_id',    sql.Int, bpId)
+    .input('tier_id',  sql.Int, tierId)
     .query(`
-      IF EXISTS (SELECT 1 FROM contact_tiers WHERE org_id=@org_id AND contact_id=@contact_id)
-        UPDATE contact_tiers SET tier_id=@tier_id, assigned_at=GETDATE(), assigned_by=@by
-        WHERE org_id=@org_id AND contact_id=@contact_id
-      ELSE
-        INSERT INTO contact_tiers (org_id,contact_id,tier_id,assigned_at,assigned_by)
-        VALUES (@org_id,@contact_id,@tier_id,GETDATE(),@by)
+      UPDATE business_partners
+      SET customer_tier_id = @tier_id,
+          updated_at       = GETDATE()
+      WHERE id = @bp_id AND org_id = @org_id AND is_active = 1
     `);
-  return res.json({ success: true, message: 'Contact assigned to tier.' });
+  return res.json({ success: true, message: 'Business partner assigned to tier.' });
 }));
 
+// Unassign — :contactId is now a bp_id
 router.delete('/tiers/:id/contacts/:contactId', requirePermission('settings','update'), asyncHandler(async (req, res) => {
   await poolConnect;
   await pool.request()
-    .input('org_id',     sql.Int, req.user.orgId)
-    .input('contact_id', sql.Int, parseInt(req.params.contactId))
-    .input('tier_id',    sql.Int, parseInt(req.params.id))
-    .query('DELETE FROM contact_tiers WHERE org_id=@org_id AND contact_id=@contact_id AND tier_id=@tier_id');
-  return res.json({ success: true, message: 'Contact removed from tier.' });
+    .input('org_id',  sql.Int, req.user.orgId)
+    .input('bp_id',   sql.Int, parseInt(req.params.contactId))
+    .input('tier_id', sql.Int, parseInt(req.params.id))
+    .query(`
+      UPDATE business_partners
+      SET customer_tier_id = NULL,
+          updated_at       = GETDATE()
+      WHERE id = @bp_id AND org_id = @org_id
+        AND customer_tier_id = @tier_id
+    `);
+  return res.json({ success: true, message: 'Business partner removed from tier.' });
 }));
 
 // ────────────────────────────────────────────────────────────────

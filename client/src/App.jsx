@@ -33,6 +33,8 @@ import AccountingPage       from './pages/accounting/AccountingPage';
 import WmsInboundPage      from './pages/wms/WmsInboundPage';
 import P2PPage             from './pages/p2p/P2PPage';
 import O2CPage             from './pages/o2c/O2CPage';
+import BusinessPartnersPage from './pages/contacts/BusinessPartnersPage';
+import BPDashboardPage      from './pages/contacts/BPDashboardPage';
 
 // ── Route guards ───────────────────────────────────────────────
 function RequireAuth({ children }) {
@@ -85,6 +87,8 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="contacts" element={<ContactsPage />} />
+        <Route path="bp"      element={<BusinessPartnersPage />} />
+        <Route path="bp/:id"  element={<BPDashboardPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
         <Route path="warehouse"         element={<RequireAdmin><WarehousePage /></RequireAdmin>} />

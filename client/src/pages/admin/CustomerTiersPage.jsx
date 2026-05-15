@@ -12,7 +12,7 @@ function avatarColor(name) { const colors=['#2F7FE8','#2ECC8A','#E89B2F','#9366E
 export default function CustomerTiersPage() {
   const { isAdmin } = useAuth();
   const [tiers,      setTiers]      = useState([]);
-  const [contacts,   setContacts]   = useState([]);
+  const [bps,        setBps]        = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState(null);
   const [members,    setMembers]    = useState([]);
@@ -20,7 +20,7 @@ export default function CustomerTiersPage() {
   const [editId,     setEditId]     = useState(null);
   const [form,       setForm]       = useState({ name: '', description: '', color: TIER_COLORS[0], discount_pct: 0 });
   const [saving,     setSaving]     = useState(false);
-  const [addContactId, setAddContactId] = useState('');
+  const [addBpId,    setAddBpId]    = useState('');
   const [error,      setError]      = useState('');
   const [success,    setSuccess]    = useState('');
 
@@ -30,17 +30,17 @@ export default function CustomerTiersPage() {
     setLoading(false);
   }
 
-  async function loadContacts() {
-    const r = await fetch('/api/contacts?limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } });
+  async function loadBps() {
+    const r = await fetch('/api/business-partners?limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } });
     const d = await r.json();
-    setContacts(d.data || []);
+    setBps(d.data || []);
   }
 
-  useEffect(() => { loadTiers(); loadContacts(); }, []);
+  useEffect(() => { loadTiers(); loadBps(); }, []);
 
   async function selectTier(tier) {
     setSelected(tier);
-    setAddContactId('');
+    setAddBpId('');
     setError('');
     const { data } = await productUomApi.getTierContacts(tier.id);
     setMembers(data.data || []);
@@ -77,19 +77,19 @@ export default function CustomerTiersPage() {
   }
 
   async function handleAssign() {
-    if (!addContactId || !selected) return;
+    if (!addBpId || !selected) return;
     try {
-      await productUomApi.assignContact(selected.id, parseInt(addContactId));
-      setAddContactId('');
+      await productUomApi.assignBp(selected.id, parseInt(addBpId));
+      setAddBpId('');
       const { data } = await productUomApi.getTierContacts(selected.id);
       setMembers(data.data || []);
       await loadTiers();
     } catch (err) { alert(err.response?.data?.error || 'Failed to assign.'); }
   }
 
-  async function handleRemoveContact(contactId) {
+  async function handleRemoveMember(bpId) {
     try {
-      await productUomApi.removeContact(selected.id, contactId);
+      await productUomApi.removeBp(selected.id, bpId);
       const { data } = await productUomApi.getTierContacts(selected.id);
       setMembers(data.data || []);
       await loadTiers();
@@ -105,7 +105,7 @@ export default function CustomerTiersPage() {
 
   if (!isAdmin) return <div className={styles.page}><div className={styles.empty}>Access denied.</div></div>;
 
-  const unassigned = contacts.filter(c => !members.find(m => m.id === c.id));
+  const unassigned = bps.filter(b => !members.find(m => m.bp_id === b.id));
 
   return (
     <div className={styles.page}>
@@ -208,15 +208,17 @@ export default function CustomerTiersPage() {
             </div>
 
             <div className={styles.panelBody}>
-              {/* Add contact */}
+              {/* Add business partner */}
               <div className={styles.addRow}>
-                <select className="form-input" style={{ flex: 1 }} value={addContactId} onChange={e => setAddContactId(e.target.value)}>
-                  <option value="">Assign a contact to this tier...</option>
-                  {unassigned.map(c => (
-                    <option key={c.id} value={c.id}>{c.full_name} {c.email ? `(${c.email})` : ''}</option>
+                <select className="form-input" style={{ flex: 1 }} value={addBpId} onChange={e => setAddBpId(e.target.value)}>
+                  <option value="">— Select Business Partner —</option>
+                  {unassigned.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.display_name} ({b.bp_type === 'organization' ? 'Org' : 'Person'})
+                    </option>
                   ))}
                 </select>
-                <button className="btn btn-primary btn-sm" disabled={!addContactId} onClick={handleAssign}>
+                <button className="btn btn-primary btn-sm" disabled={!addBpId} onClick={handleAssign}>
                   Assign
                 </button>
               </div>
@@ -224,20 +226,37 @@ export default function CustomerTiersPage() {
               {/* Members list */}
               {members.length === 0 ? (
                 <div className={styles.empty} style={{ padding: '32px 20px' }}>
-                  No contacts assigned to this tier yet.
+                  No business partners assigned to this tier yet.
                 </div>
               ) : (
                 <div className={styles.memberList}>
                   {members.map(m => (
-                    <div key={m.id} className={styles.memberRow}>
-                      <div className={styles.memberAvatar} style={{ background: avatarColor(m.full_name) }}>
-                        {initials(m.full_name)}
+                    <div key={m.bp_id} className={styles.memberRow}>
+                      <div className={styles.memberAvatar} style={{ background: avatarColor(m.display_name) }}>
+                        {initials(m.display_name)}
                       </div>
                       <div className={styles.memberInfo}>
-                        <div className={styles.memberName}>{m.full_name}</div>
-                        <div className={styles.memberSub}>{m.email || m.contact_type || ''}</div>
+                        <div className={styles.memberName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {m.display_name}
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20,
+                            background: m.bp_type === 'organization' ? '#dbeafe' : '#ede9fe',
+                            color: m.bp_type === 'organization' ? '#2F7FE8' : '#9366E8',
+                          }}>
+                            {m.bp_type === 'organization' ? 'Org' : 'Person'}
+                          </span>
+                          {m.bp_role && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 20,
+                              background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-sub)',
+                            }}>
+                              {m.bp_role}
+                            </span>
+                          )}
+                        </div>
+                        <div className={styles.memberSub}>{m.email || ''}</div>
                       </div>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleRemoveContact(m.id)}>
+                      <button className="btn btn-outline btn-sm" onClick={() => handleRemoveMember(m.bp_id)}>
                         Remove
                       </button>
                     </div>

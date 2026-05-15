@@ -164,7 +164,8 @@ export default function DashboardShell() {
           <div className={styles.navDivider} />
 
           <NavSection label="CRM" collapsed={collapsed}>
-            <NavItem to="/contacts" icon={<UsersIcon />}   label="Contacts" collapsed={collapsed} />
+            <NavItem to="/contacts" icon={<UsersIcon />}       label="Contacts"          collapsed={collapsed} />
+            <NavItem to="/bp"       icon={<BriefcaseIcon />}   label="Business Partners" collapsed={collapsed} />
           </NavSection>
 
           {/* ── ADMIN NAV (only visible to admin+) ── */}
@@ -320,4 +321,5 @@ function FxIcon()    { return ic(<><line x1='12' y1='1' x2='12' y2='23'/><path d
 function TruckIcon() { return ic(<><rect x='1' y='3' width='15' height='13' rx='2'/><polygon points='16 8 20 8 23 11 23 16 16 16 16 8'/><circle cx='5.5' cy='18.5' r='2.5'/><circle cx='18.5' cy='18.5' r='2.5'/></>); }
 function ScanIcon()     { return ic(<><rect x='2' y='2' width='7' height='7' rx='1'/><rect x='15' y='2' width='7' height='7' rx='1'/><rect x='2' y='15' width='7' height='7' rx='1'/><line x1='15' y1='15' x2='22' y2='15'/><line x1='22' y1='15' x2='22' y2='22'/><line x1='15' y1='22' x2='22' y2='22'/></>); }
 function CatGroupIcon() { return ic(<><path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M23 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a4 4 0 0 1 0 7.75'/></>); }
-function PriceTagIcon() { return ic(<><path d='M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z'/><line x1='7' y1='7' x2='7.01' y2='7'/></>); }
+function PriceTagIcon()   { return ic(<><path d='M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z'/><line x1='7' y1='7' x2='7.01' y2='7'/></>); }
+function BriefcaseIcon() { return ic(<><rect x='2' y='7' width='20' height='14' rx='2' ry='2'/><path d='M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16'/></>); }

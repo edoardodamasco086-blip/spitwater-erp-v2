@@ -78,7 +78,15 @@
       "Bash(Find /c/Projects/spitwater-erp-v2/client/src/components -name \"*\" -type f)",
       "Bash(Find /c/Projects/spitwater-erp-v2/server -name \"*[Pp]ricing*\" -type f)",
       "Bash(node scripts/migrate-customer-categories.js)",
-      "Bash(node scripts/migrate-price-list-base.js)"
+      "Bash(node scripts/migrate-price-list-base.js)",
+      "Read(//c/Users/edoar/.claude/projects/c--Projects-spitwater-erp-v2/memory/**)",
+      "PowerShell(Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\.env\" 2>$null | Select-String \"SERP|ANTHROPIC|API_KEY\" | ForEach-Object { \\($_ -split '='\\)[0] })",
+      "PowerShell(Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\.env\" 2>$null | ForEach-Object { \\($_ -split '='\\)[0] })",
+      "Bash(node scripts/migrate-business-partners.js)",
+      "Bash(node scripts/migrate-bp-phase2.js)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Dependencies:', list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\); print\\('DevDeps:', list\\(d.get\\('devDependencies',{}\\).keys\\(\\)\\)\\); print\\('Scripts:', list\\(d.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(node -e \"const p=require\\('/c/Projects/spitwater-erp-v2/server/package.json'\\); console.log\\('deps:', Object.keys\\(p.dependencies||{}\\).join\\(', '\\)\\); console.log\\('devDeps:', Object.keys\\(p.devDependencies||{}\\).join\\(', '\\)\\);\")",
+      "PowerShell($p = Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\package.json\" | ConvertFrom-Json; Write-Host \"deps:\" \\($p.dependencies.PSObject.Properties.Name -join \", \"\\); Write-Host \"devDeps:\" \\($p.devDependencies.PSObject.Properties.Name -join \", \"\\))"
     ]
   }
 }

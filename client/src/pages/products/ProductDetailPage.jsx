@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { productsApi } from '../../api/products';
 import { productUomApi, currencyApi } from '../../api/productUom';
 import { useFieldValidation } from '../../hooks/useFieldValidation';
-import { getAccessToken } from '../../api/client';
 import RelationshipsTab    from './RelationshipsTab';
 import AiMarketTab         from './AiMarketTab';
 import StockTab            from './StockTab';
@@ -14,7 +13,6 @@ import styles from './ProductDetailPage.module.css';
 const TABS = [
   { key: 'overview',   label: 'Overview'       },
   { key: 'ai_market',  label: 'AI Market Analysis' },
-  { key: 'suppliers',  label: 'Suppliers'      },
   { key: 'sourcing',   label: 'Sourcing'       },
   { key: 'packaging',  label: 'Packaging'      },
   { key: 'images',     label: 'Images'         },
@@ -68,7 +66,6 @@ export default function ProductDetailPage() {
   const [pricing,      setPricing]      = useState([]);
   const [loading,      setLoading]      = useState(!isNew);
   const [uomConversions, setUomConversions] = useState([]);
-  const [supplierPrices, setSupplierPrices] = useState([]);
   const [productSuppliers, setProductSuppliers] = useState([]);
   const [currencies,     setCurrencies]     = useState([]);
   const [saving,       setSaving]       = useState(false);
@@ -149,12 +146,11 @@ export default function ProductDetailPage() {
   async function loadProduct() {
     setLoading(true);
     try {
-      const [prodRes, cvRes, pricingRes, uomRes, suppRes, lockRes, suppliersRes] = await Promise.all([
+      const [prodRes, cvRes, pricingRes, uomRes, lockRes, suppliersRes] = await Promise.all([
         productsApi.get(id),
         productsApi.getCustomValues(id),
         productsApi.getPricing(id),
         productUomApi.list(id).catch(() => ({ data: { data: [] } })),
-        productUomApi.listSupplierPrices(id).catch(() => ({ data: { data: [] } })),
         productsApi.uomLockStatus(id).catch(() => ({ data: { data: { locked: false, reasons: [] } } })),
         productsApi.getSuppliers(id).catch(() => ({ data: { data: [] } })),
       ]);
@@ -164,7 +160,6 @@ export default function ProductDetailPage() {
       setPricing(pricingRes.data.data);
       setCustomValues(cvRes.data.data  || {});
       setUomConversions(uomRes.data.data || []);
-      setSupplierPrices(suppRes.data.data || []);
       setUomLock(lockRes.data.data || { locked: false, reasons: [] });
       setProductSuppliers(suppliersRes.data.data || []);
       // Reload custom fields scoped to this product's category
@@ -593,7 +588,7 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-sub)', marginTop: 6 }}>
-                  Lead time, MOQ and order multiple are managed per supplier in the <button type="button" className="btn-link" onClick={() => setActiveTab('suppliers')}>Suppliers tab</button>. PIRs and pricing conditions are managed in the <button type="button" className="btn-link" onClick={() => setActiveTab('sourcing')}>Sourcing tab</button>.
+                  Lead time, MOQ, order multiple, and PIRs with pricing conditions are managed per supplier in the <button type="button" className="btn-link" onClick={() => setActiveTab('sourcing')}>Sourcing tab</button>.
                 </div>
               </div>
 
@@ -666,7 +661,7 @@ export default function ProductDetailPage() {
                     ) : (
                       <div style={{ fontSize: 13, color: 'var(--text-sub)' }}>No supplier linked yet.</div>
                     )}
-                    <button type="button" className="btn btn-outline btn-sm" style={{ width: '100%', marginTop: 10 }} onClick={() => setActiveTab('suppliers')}>
+                    <button type="button" className="btn btn-outline btn-sm" style={{ width: '100%', marginTop: 10 }} onClick={() => setActiveTab('sourcing')}>
                       Manage suppliers
                     </button>
                   </div>
@@ -848,23 +843,13 @@ export default function ProductDetailPage() {
         {!isNew && activeTab === 'pricing' && (
           <div className={styles.tabContent}>
             <PricingTab
-              productId={id}
-              baseUomId={form.base_uom_id}
               pricing={pricing}
               setPricing={setPricing}
               uomConversions={uomConversions}
-              supplierPrices={supplierPrices}
-              setSupplierPrices={setSupplierPrices}
-              uoms={uoms}
               currencies={currencies}
               saving={saving}
               onSavePricing={handleSavePricing}
               navigate={navigate}
-              productSuppliers={productSuppliers}
-              onReloadSupplier={async () => {
-                const r = await productUomApi.listSupplierPrices(id);
-                setSupplierPrices(r.data.data || []);
-              }}
             />
           </div>
         )}
@@ -889,20 +874,6 @@ export default function ProductDetailPage() {
             <ProductHistoryTab productId={id} />
           </div>
         )}
-        {/* ── SUPPLIERS TAB ── */}
-        {!isNew && activeTab === 'suppliers' && (
-          <div className={styles.tabContent}>
-            <SuppliersTab
-              productId={id}
-              productSuppliers={productSuppliers}
-              onReload={async () => {
-                const r = await productsApi.getSuppliers(id);
-                setProductSuppliers(r.data.data || []);
-              }}
-            />
-          </div>
-        )}
-
         {/* ── SOURCING TAB ── */}
         {!isNew && activeTab === 'sourcing' && (
           <div className={styles.tabContent}>
@@ -964,260 +935,10 @@ function TrashIcon()    { return <SvgIcon size={13}><polyline points="3 6 5 6 21
 function PlusSmIcon()   { return <SvgIcon size={13}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></SvgIcon>; }
 function TrashSmIcon()  { return <SvgIcon size={12}><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></SvgIcon>; }
 
-// ── SuppliersTab ─────────────────────────────────────────────
-function SuppliersTab({ productId, productSuppliers, onReload }) {
-  const PILL = { purchase: 'pill-green', sales: 'pill-orange', other: 'pill-grey' };
-  const [allSuppliers, setAllSuppliers] = useState([]);
-  const [edits,    setEdits]    = useState({});
-  const [saving2,  setSaving2]  = useState({});
-  const [showAdd,  setShowAdd]  = useState(false);
-  const [addSaving,setAddSaving]= useState(false);
-  const [addErr,   setAddErr]   = useState('');
-  const [newRow,   setNewRow]   = useState({ contact_id: '', supplier_part_number: '', lead_time_days: '', min_order_qty: '', order_multiple: '', notes: '' });
-
-  useEffect(() => {
-    fetch('/api/contacts?type=supplier&limit=500', { headers: { Authorization: `Bearer ${getAccessToken()}` } })
-      .then(r => r.json()).then(d => setAllSuppliers(d.data || [])).catch(() => {});
-  }, []);
-
-  const linkedIds = new Set(productSuppliers.map(s => s.contact_id));
-  const available = allSuppliers.filter(s => !linkedIds.has(s.id));
-
-  function startEdit(s) {
-    setEdits(e => ({ ...e, [s.id]: {
-      supplier_part_number: s.supplier_part_number || '',
-      lead_time_days:  String(s.lead_time_days ?? ''),
-      min_order_qty:   String(s.min_order_qty  ?? ''),
-      order_multiple:  String(s.order_multiple ?? ''),
-      notes:           s.notes || '',
-    }}));
-  }
-  function cancelEdit(id) { setEdits(e => { const n={...e}; delete n[id]; return n; }); }
-  function setField(id, field, val) { setEdits(e => ({ ...e, [id]: { ...e[id], [field]: val } })); }
-
-  async function saveEdit(s) {
-    const d = edits[s.id];
-    setSaving2(sv => ({ ...sv, [s.id]: true }));
-    try {
-      await productsApi.updateSupplier(productId, s.id, {
-        supplier_part_number: d.supplier_part_number || null,
-        lead_time_days:  d.lead_time_days !== '' ? parseInt(d.lead_time_days) : 0,
-        min_order_qty:   d.min_order_qty  !== '' ? parseFloat(d.min_order_qty) : 1,
-        order_multiple:  d.order_multiple !== '' ? parseFloat(d.order_multiple) : 1,
-        notes:           d.notes || null,
-      });
-      cancelEdit(s.id);
-      await onReload();
-    } catch(e) { alert(e.response?.data?.error || 'Save failed.'); }
-    finally { setSaving2(sv => ({ ...sv, [s.id]: false })); }
-  }
-
-  async function handleSetPreferred(id) {
-    try { await productsApi.setPreferredSupplier(productId, id); await onReload(); }
-    catch(e) { alert(e.response?.data?.error || 'Failed to set default.'); }
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('Remove this supplier from this product?')) return;
-    try { await productsApi.deleteSupplier(productId, id); await onReload(); }
-    catch(e) { alert(e.response?.data?.error || 'Remove failed.'); }
-  }
-
-  async function handleAdd() {
-    if (!newRow.contact_id) { setAddErr('Please select a supplier.'); return; }
-    setAddSaving(true); setAddErr('');
-    try {
-      await productsApi.addSupplier(productId, {
-        contact_id:          parseInt(newRow.contact_id),
-        supplier_part_number:newRow.supplier_part_number || null,
-        lead_time_days:      newRow.lead_time_days !== '' ? parseInt(newRow.lead_time_days) : 0,
-        min_order_qty:       newRow.min_order_qty  !== '' ? parseFloat(newRow.min_order_qty) : 1,
-        order_multiple:      newRow.order_multiple !== '' ? parseFloat(newRow.order_multiple) : 1,
-        notes:               newRow.notes || null,
-        is_preferred:        productSuppliers.length === 0, // first one auto-preferred
-      });
-      setNewRow({ contact_id: '', supplier_part_number: '', lead_time_days: '', min_order_qty: '', order_multiple: '', notes: '' });
-      setShowAdd(false);
-      await onReload();
-    } catch(e) { setAddErr(e.response?.data?.error || 'Failed to add supplier.'); }
-    finally { setAddSaving(false); }
-  }
-
-  const inputS = { background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 12, width: '100%' };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>Linked Suppliers</div>
-          <div style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 2 }}>Manage which suppliers provide this product, with per-supplier terms.</div>
-        </div>
-        <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowAdd(v => !v); setAddErr(''); }}>
-          <PlusSmIcon /> Add supplier
-        </button>
-      </div>
-
-      {/* Add form */}
-      {showAdd && (
-        <div style={{ padding: '16px 18px', background: 'var(--accent-dim)', border: '1px solid rgba(47,127,232,0.15)', borderRadius: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 10 }}>Link a new supplier</div>
-          {addErr && <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{addErr}</div>}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
-            <div className="form-group" style={{ flex: '3 1 180px', marginBottom: 0 }}>
-              <label className="form-label">Supplier *</label>
-              <select className="form-input" value={newRow.contact_id} onChange={e => setNewRow(r => ({...r, contact_id: e.target.value}))}>
-                <option value="">Select supplier...</option>
-                {available.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '2 1 130px', marginBottom: 0 }}>
-              <label className="form-label">Supplier part number</label>
-              <input style={inputS} placeholder="MFR-SKU-001" value={newRow.supplier_part_number} onChange={e => setNewRow(r => ({...r, supplier_part_number: e.target.value}))} />
-            </div>
-            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-              <label className="form-label">Lead time (days)</label>
-              <input style={inputS} type="number" min="0" placeholder="0" value={newRow.lead_time_days} onChange={e => setNewRow(r => ({...r, lead_time_days: e.target.value}))} />
-            </div>
-            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-              <label className="form-label">Min order qty</label>
-              <input style={inputS} type="number" step="0.0001" min="0" placeholder="1" value={newRow.min_order_qty} onChange={e => setNewRow(r => ({...r, min_order_qty: e.target.value}))} />
-            </div>
-            <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-              <label className="form-label">Order multiple</label>
-              <input style={inputS} type="number" step="0.0001" min="0" placeholder="1" value={newRow.order_multiple} onChange={e => setNewRow(r => ({...r, order_multiple: e.target.value}))} />
-            </div>
-          </div>
-          <div className="form-group" style={{ marginBottom: 10 }}>
-            <label className="form-label">Notes</label>
-            <textarea style={{...inputS, minHeight: 56, resize: 'vertical'}} placeholder="Internal notes about this supplier..." value={newRow.notes} onChange={e => setNewRow(r => ({...r, notes: e.target.value}))} />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-primary btn-sm" disabled={addSaving || !newRow.contact_id} onClick={handleAdd}>{addSaving ? '...' : 'Link supplier'}</button>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAdd(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-      {/* List */}
-      {productSuppliers.length === 0 && !showAdd ? (
-        <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-sub)', fontSize: 13, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8 }}>
-          No suppliers linked yet. Click "Add supplier" to start.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {productSuppliers.map(s => {
-            const isEditing = Boolean(edits[s.id]);
-            const d = edits[s.id] || {};
-            return (
-              <div key={s.id} style={{ border: `2px solid ${s.is_preferred ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
-                {/* Header row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: s.is_preferred ? 'rgba(47,127,232,0.05)' : 'var(--card)', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{s.supplier_name}</div>
-                    {s.supplier_code && <div style={{ fontSize: 11, color: 'var(--text-sub)' }}>{s.supplier_code}</div>}
-                  </div>
-                  {s.is_preferred && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--accent)', color: '#fff', borderRadius: 5, padding: '2px 8px', letterSpacing: '0.05em' }}>⭐ DEFAULT</span>}
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    {!s.is_preferred && <button type="button" className="btn btn-outline btn-sm" onClick={() => handleSetPreferred(s.id)}>Set as default</button>}
-                    {!isEditing
-                      ? <button type="button" className="btn btn-outline btn-sm" onClick={() => startEdit(s)}>Edit</button>
-                      : <>
-                          <button type="button" className="btn btn-primary btn-sm" disabled={saving2[s.id]} onClick={() => saveEdit(s)}>{saving2[s.id] ? '...' : 'Save'}</button>
-                          <button type="button" className="btn btn-outline btn-sm" onClick={() => cancelEdit(s.id)}>Cancel</button>
-                        </>}
-                    <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}><TrashSmIcon /></button>
-                  </div>
-                </div>
-
-                {/* Details / edit */}
-                {!isEditing ? (
-                  <div style={{ padding: '10px 16px', background: 'rgba(240,244,249,0.4)', borderTop: '1px solid var(--border)', display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12 }}>
-                    <div><span style={{ color: 'var(--text-sub)' }}>Part #: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{s.supplier_part_number || <span style={{ color: 'var(--text-sub)' }}>—</span>}</span></div>
-                    <div><span style={{ color: 'var(--text-sub)' }}>Lead time: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{s.lead_time_days > 0 ? `${s.lead_time_days} day${s.lead_time_days !== 1 ? 's' : ''}` : '—'}</span></div>
-                    <div><span style={{ color: 'var(--text-sub)' }}>MOQ: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{parseFloat(s.min_order_qty) || '—'}</span></div>
-                    <div><span style={{ color: 'var(--text-sub)' }}>Order ×: </span><span style={{ fontFamily: 'DM Mono', fontWeight: 500 }}>{parseFloat(s.order_multiple) || '—'}</span></div>
-                    {s.notes && <div style={{ flexBasis: '100%', color: 'var(--text-sub)', fontStyle: 'italic' }}>{s.notes}</div>}
-                  </div>
-                ) : (
-                  <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'rgba(47,127,232,0.02)' }}>
-                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-                      <div className="form-group" style={{ flex: '2 1 140px', marginBottom: 0 }}>
-                        <label className="form-label">Supplier part number</label>
-                        <input style={inputS} placeholder="MFR-SKU-001" value={d.supplier_part_number} onChange={e => setField(s.id, 'supplier_part_number', e.target.value)} />
-                      </div>
-                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-                        <label className="form-label">Lead time (days)</label>
-                        <input style={inputS} type="number" min="0" value={d.lead_time_days} onChange={e => setField(s.id, 'lead_time_days', e.target.value)} />
-                      </div>
-                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-                        <label className="form-label">Min order qty</label>
-                        <input style={inputS} type="number" step="0.0001" min="0" value={d.min_order_qty} onChange={e => setField(s.id, 'min_order_qty', e.target.value)} />
-                      </div>
-                      <div className="form-group" style={{ flex: '1 1 80px', marginBottom: 0 }}>
-                        <label className="form-label">Order multiple</label>
-                        <input style={inputS} type="number" step="0.0001" min="0" value={d.order_multiple} onChange={e => setField(s.id, 'order_multiple', e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Notes</label>
-                      <textarea style={{...inputS, minHeight: 56, resize: 'vertical'}} value={d.notes} onChange={e => setField(s.id, 'notes', e.target.value)} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── PricingTab ─────────────────────────────────────────────────
-function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions, supplierPrices,
-  setSupplierPrices, uoms, currencies, saving, onSavePricing, navigate, onReloadSupplier, productSuppliers }) {
-
-  const [showAddSupplier, setShowAddSupplier] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ contact_id: '', uom_id: '', unit_price: '', currency_code: 'AUD', min_order_qty: 1, lead_time_days: '', notes: '' });
-  const [savingSupp, setSavingSupp] = useState(false);
-
-  // Suppliers filtered to only those linked to this product
-  const suppliers = productSuppliers || [];
-
-  // Available UOMs = base + all conversions
-  const allUoms = uoms.filter(u => 
-    u.id === parseInt(baseUomId) || 
-    uomConversions.some(c => c.uom_id === u.id)
-  );
+function PricingTab({ pricing, setPricing, uomConversions, currencies, saving, onSavePricing, navigate }) {
 
   const activeCurrencies = currencies.filter(c => c.is_active);
-
-  async function handleAddSupplierPrice() {
-    if (!newSupplier.contact_id || !newSupplier.uom_id || !newSupplier.unit_price) return;
-    setSavingSupp(true);
-    try {
-      await productUomApi.addSupplierPrice(productId, {
-        ...newSupplier,
-        unit_price:     parseFloat(newSupplier.unit_price),
-        min_order_qty:  parseFloat(newSupplier.min_order_qty) || 1,
-        lead_time_days: newSupplier.lead_time_days ? parseInt(newSupplier.lead_time_days) : null,
-      });
-      setShowAddSupplier(false);
-      setNewSupplier({ contact_id: '', uom_id: '', unit_price: '', currency_code: 'AUD', min_order_qty: 1, lead_time_days: '', notes: '' });
-      await onReloadSupplier();
-    } finally { setSavingSupp(false); }
-  }
-
-  async function handleRemoveSupplierPrice(suppId) {
-    if (!confirm('Remove this supplier price?')) return;
-    try {
-      await productUomApi.removeSupplierPrice(productId, suppId);
-      await onReloadSupplier();
-    } catch(err) {
-      alert(err.response?.data?.error || err.message || 'Failed to remove supplier price.');
-    }
-  }
 
   const baseCurrency = currencies.find(c => c.is_base)?.code || 'AUD';
 
@@ -1296,101 +1017,6 @@ function PricingTab({ productId, baseUomId, pricing, setPricing, uomConversions,
         )}
       </div>
 
-      {/* ── Purchase / Supplier Pricing ─── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>Purchase Pricing</div>
-            <div style={{ fontSize: 12, color: 'var(--text-sub)', marginTop: 2 }}>
-              Supplier prices per UOM and currency. Automatically converted to {baseCurrency} at today's rate.
-            </div>
-          </div>
-          <button className="btn btn-outline btn-sm" onClick={() => setShowAddSupplier(v => !v)}>
-            <PlusIcon /> Add supplier price
-          </button>
-        </div>
-
-        {/* Add supplier price form */}
-        {showAddSupplier && (
-          <div style={{ background: 'var(--accent-dim)', border: '1px solid rgba(47,127,232,0.2)', borderRadius: 8, padding: '14px 16px', marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
-            <div className="form-group" style={{ flex: '2 1 160px' }}>
-              <label className="form-label">Supplier *</label>
-              <select className="form-input" value={newSupplier.contact_id} onChange={e => setNewSupplier(s => ({...s, contact_id: e.target.value}))}>
-                <option value="">Select supplier...</option>
-                {suppliers.map(s => <option key={s.contact_id} value={s.contact_id}>{s.supplier_name}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '1 1 120px' }}>
-              <label className="form-label">UOM *</label>
-              <select className="form-input" value={newSupplier.uom_id} onChange={e => setNewSupplier(s => ({...s, uom_id: e.target.value}))}>
-                <option value="">Select UOM...</option>
-                {allUoms.map(u => <option key={u.id} value={u.id}>{u.code}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '1 1 100px' }}>
-              <label className="form-label">Price *</label>
-              <input className="form-input" type="number" step="0.0001" min="0" placeholder="0.00" value={newSupplier.unit_price} onChange={e => setNewSupplier(s => ({...s, unit_price: e.target.value}))} style={{ fontFamily: 'DM Mono' }} />
-            </div>
-            <div className="form-group" style={{ flex: '0 1 90px' }}>
-              <label className="form-label">Currency</label>
-              <select className="form-input" value={newSupplier.currency_code} onChange={e => setNewSupplier(s => ({...s, currency_code: e.target.value}))}>
-                {activeCurrencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex: '0 1 80px' }}>
-              <label className="form-label">Min Qty</label>
-              <input className="form-input" type="number" step="1" min="1" value={newSupplier.min_order_qty} onChange={e => setNewSupplier(s => ({...s, min_order_qty: e.target.value}))} />
-            </div>
-            <div className="form-group" style={{ flex: '0 1 80px' }}>
-              <label className="form-label">Lead (days)</label>
-              <input className="form-input" type="number" min="0" value={newSupplier.lead_time_days} onChange={e => setNewSupplier(s => ({...s, lead_time_days: e.target.value}))} />
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="btn btn-primary btn-sm" disabled={savingSupp || !newSupplier.contact_id || !newSupplier.uom_id || !newSupplier.unit_price} onClick={handleAddSupplierPrice}>
-                {savingSupp ? 'Adding...' : 'Add'}
-              </button>
-              <button className="btn btn-outline btn-sm" onClick={() => setShowAddSupplier(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {supplierPrices.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-sub)', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8 }}>
-            No supplier prices yet. Add one above.
-          </div>
-        ) : (
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'rgba(240,244,249,0.6)' }}>
-                  {['Supplier','UOM','Price','Currency','Rate','AUD Equiv.','Min Qty','Lead (days)',''].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-sub)', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {supplierPrices.map(sp => (
-                  <tr key={sp.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 500 }}>{sp.supplier_name}</td>
-                    <td style={{ padding: '8px 12px' }}><span className="pill pill-grey">{sp.uom_code}</span></td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'DM Mono' }}>{parseFloat(sp.unit_price).toFixed(4)}</td>
-                    <td style={{ padding: '8px 12px' }}>{sp.currency_code}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'DM Mono', fontSize: 11, color: 'var(--text-sub)' }}>{sp.fx_rate ? sp.fx_rate.toFixed(4) : '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'DM Mono', fontWeight: 600, color: 'var(--accent)' }}>
-                      {sp.aud_equiv ? `${baseCurrency} ${parseFloat(sp.aud_equiv).toFixed(4)}` : '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'DM Mono' }}>{sp.min_order_qty}</td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-sub)' }}>{sp.lead_time_days ?? '—'}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleRemoveSupplierPrice(sp.id)}><TrashIcon /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

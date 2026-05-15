@@ -234,9 +234,56 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
   if (!po) return res.status(404).json({ success: false, error: 'PO not found.' });
   if (!['draft'].includes(po.status)) return res.status(409).json({ success: false, error: 'Can only add items to draft POs.' });
 
-  const { product_id, warehouse_id, pr_item_id, rfq_item_id, qty_ordered, unit_price, delivery_date, notes } = req.body;
-  if (!product_id || !qty_ordered || !unit_price) {
-    return res.status(400).json({ success: false, error: 'product_id, qty_ordered, and unit_price are required.' });
+  const {
+    product_id, warehouse_id, pr_item_id, rfq_item_id,
+    qty_ordered, unit_price,  // unit_price is now OPTIONAL
+    delivery_date, notes,
+  } = req.body;
+
+  if (!product_id || !qty_ordered) {
+    return res.status(400).json({ success: false, error: 'product_id and qty_ordered are required.' });
+  }
+
+  let resolvedUnitPrice       = unit_price ? Number(unit_price) : null;
+  let pricingSource           = 'manual';
+  let resolvedVendorPartNumber = null;
+  let resolvedCurrency        = null;
+
+  // Auto-lookup from PIR if unit_price not provided
+  if (!resolvedUnitPrice) {
+    // supplier_id on the PO header is the vendor contact id
+    const vendorId = po.supplier_id || null;
+
+    if (vendorId) {
+      try {
+        const { determinePurchasePrice } = require('../utils/purchasePricingEngine');
+        const pirResult = await determinePurchasePrice({
+          orgId,
+          productId:  parseInt(product_id),
+          vendorId,
+          qty:        Number(qty_ordered),
+          date:       new Date(),
+          pool,
+          sql,
+        });
+
+        if (pirResult && pirResult.price != null) {
+          resolvedUnitPrice        = pirResult.price;
+          pricingSource            = pirResult.source;
+          resolvedVendorPartNumber = pirResult.vendorMaterialNumber;
+          resolvedCurrency         = pirResult.currency_code;
+        }
+      } catch (e) {
+        console.warn('[PO] PIR price lookup failed:', e.message);
+      }
+    }
+  }
+
+  if (!resolvedUnitPrice) {
+    return res.status(400).json({
+      success: false,
+      error: 'unit_price is required. No PIR pricing found for this product/vendor combination.',
+    });
   }
 
   // Get next line number
@@ -253,7 +300,7 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
     .input('rfq_item_id',   sql.Int,           rfq_item_id  || null)
     .input('line_number',   sql.Int,           lineNumber)
     .input('qty_ordered',   sql.Decimal(18,4), Number(qty_ordered))
-    .input('unit_price',    sql.Decimal(18,4), Number(unit_price))
+    .input('unit_price',    sql.Decimal(18,4), resolvedUnitPrice)
     .input('delivery_date', sql.Date,          delivery_date ? new Date(delivery_date) : null)
     .input('notes',         sql.NVarChar(500), notes || null)
     .query(`
@@ -269,7 +316,16 @@ router.post('/:id/items', perm('write'), asyncHandler(async (req, res) => {
     `);
 
   await syncPoTotal(poId, orgId, pool, sql);
-  res.status(201).json({ success: true, data: { id: r.recordset[0].id } });
+  res.status(201).json({
+    success: true,
+    data: {
+      id:                 r.recordset[0].id,
+      unit_price:         resolvedUnitPrice,
+      pricing_source:     pricingSource,
+      vendor_part_number: resolvedVendorPartNumber,
+      currency_code:      resolvedCurrency,
+    },
+  });
 }));
 
 // ── UPDATE ITEM ───────────────────────────────────────────────

@@ -18,9 +18,9 @@ export const productUomApi = {
   createTier:      (data)     => client.post('/product-uom/tiers', data),
   updateTier:      (id, data) => client.patch(`/product-uom/tiers/${id}`, data),
   deleteTier:      (id)       => client.delete(`/product-uom/tiers/${id}`),
-  getTierContacts: (id)       => client.get(`/product-uom/tiers/${id}/contacts`),
-  assignContact:   (id, contactId) => client.post(`/product-uom/tiers/${id}/contacts`, { contactId }),
-  removeContact:   (id, contactId) => client.delete(`/product-uom/tiers/${id}/contacts/${contactId}`),
+  getTierContacts: (id)    => client.get(`/product-uom/tiers/${id}/contacts`),
+  assignBp:        (id, bpId) => client.post(`/product-uom/tiers/${id}/contacts`, { bp_id: bpId }),
+  removeBp:        (id, bpId) => client.delete(`/product-uom/tiers/${id}/contacts/${bpId}`),
 };
 
 export const currencyApi = {

@@ -90,33 +90,98 @@ router.get('/', perm('read'), asyncHandler(async (req, res) => {
 router.post('/', perm('write'), asyncHandler(async (req, res) => {
   await poolConnect;
   const orgId = req.user.orgId;
-  const { customer_id, warehouse_id, price_list_id, currency_code, payment_terms, requested_delivery_date, notes, is_full_delivery_required } = req.body;
-  if (!customer_id) return res.status(400).json({ success: false, error: 'customer_id is required.' });
+  const {
+    customer_id,
+    customer_bp_id,          // NEW — if provided, resolve customer_id from bp.legacy_contact_id
+    warehouse_id,
+    price_list_id,
+    currency_code,
+    payment_terms,
+    requested_delivery_date,
+    notes,
+    is_full_delivery_required,
+    ship_to_address_id,      // NEW — explicit address override
+    bill_to_address_id,      // NEW — explicit address override
+  } = req.body;
+
+  // ── Resolve customer_id / bp_id ───────────────────────────
+  let resolvedCustomerId = customer_id   ? parseInt(customer_id,   10) : null;
+  let resolvedBpId       = customer_bp_id ? parseInt(customer_bp_id, 10) : null;
+  let resolvedShipTo     = ship_to_address_id ? parseInt(ship_to_address_id, 10) : null;
+  let resolvedBillTo     = bill_to_address_id ? parseInt(bill_to_address_id, 10) : null;
+
+  if (resolvedBpId && !resolvedCustomerId) {
+    const bpRes = await pool.request()
+      .input('bp_id',  sql.Int, resolvedBpId)
+      .input('org_id', sql.Int, orgId)
+      .query('SELECT legacy_contact_id FROM business_partners WHERE id=@bp_id AND org_id=@org_id AND is_active=1');
+    if (!bpRes.recordset.length)
+      return res.status(404).json({ success: false, error: 'Business partner not found.' });
+    resolvedCustomerId = bpRes.recordset[0].legacy_contact_id;
+  }
+
+  if (!resolvedCustomerId)
+    return res.status(400).json({ success: false, error: 'customer_id or customer_bp_id is required.' });
+
+  // ── Auto-resolve addresses from BP if not explicitly provided ─
+  if (resolvedBpId && !resolvedShipTo) {
+    const shipAddr = await pool.request()
+      .input('bp_id',  sql.Int, resolvedBpId)
+      .input('org_id', sql.Int, orgId)
+      .query(`
+        SELECT TOP 1 ca.id
+        FROM contact_addresses ca
+        INNER JOIN business_partners bp ON bp.legacy_contact_id = ca.contact_id
+        WHERE bp.id = @bp_id
+          AND ca.address_role = 'ship_to'
+        ORDER BY ca.is_default DESC, ca.id ASC
+      `);
+    if (shipAddr.recordset.length) resolvedShipTo = shipAddr.recordset[0].id;
+  }
+
+  if (resolvedBpId && !resolvedBillTo) {
+    const billAddr = await pool.request()
+      .input('bp_id',  sql.Int, resolvedBpId)
+      .input('org_id', sql.Int, orgId)
+      .query(`
+        SELECT TOP 1 ca.id
+        FROM contact_addresses ca
+        INNER JOIN business_partners bp ON bp.legacy_contact_id = ca.contact_id
+        WHERE bp.id = @bp_id
+          AND ca.address_role = 'bill_to'
+        ORDER BY ca.is_default DESC, ca.id ASC
+      `);
+    if (billAddr.recordset.length) resolvedBillTo = billAddr.recordset[0].id;
+  }
 
   const { number } = await getNextNumber('sales_order', orgId, pool, sql);
 
   const r = await pool.request()
-    .input('org_id',                  sql.Int,           orgId)
-    .input('so_number',               sql.NVarChar(50),  number)
-    .input('customer_id',             sql.Int,           customer_id)
-    .input('warehouse_id',            sql.Int,           warehouse_id  || null)
-    .input('price_list_id',           sql.Int,           price_list_id || null)
-    .input('currency_code',               sql.VarChar(3),    currency_code || 'AUD')
-    .input('payment_terms',               sql.NVarChar(100), payment_terms || null)
-    .input('requested_delivery_date',     sql.Date,          requested_delivery_date ? new Date(requested_delivery_date) : null)
-    .input('notes',                       sql.NVarChar(1000), notes || null)
-    .input('is_full_delivery_required',   sql.Bit,           is_full_delivery_required ? 1 : 0)
-    .input('created_by',                  sql.Int,           req.user.userId)
+    .input('org_id',                      sql.Int,            orgId)
+    .input('so_number',                   sql.NVarChar(50),   number)
+    .input('customer_id',                 sql.Int,            resolvedCustomerId)
+    .input('customer_bp_id',              sql.Int,            resolvedBpId       || null)
+    .input('warehouse_id',                sql.Int,            warehouse_id       || null)
+    .input('price_list_id',               sql.Int,            price_list_id      || null)
+    .input('currency_code',               sql.VarChar(3),     currency_code      || 'AUD')
+    .input('payment_terms',               sql.NVarChar(100),  payment_terms      || null)
+    .input('requested_delivery_date',     sql.Date,           requested_delivery_date ? new Date(requested_delivery_date) : null)
+    .input('notes',                       sql.NVarChar(1000), notes              || null)
+    .input('is_full_delivery_required',   sql.Bit,            is_full_delivery_required ? 1 : 0)
+    .input('ship_to_address_id',          sql.Int,            resolvedShipTo     || null)
+    .input('bill_to_address_id',          sql.Int,            resolvedBillTo     || null)
+    .input('created_by',                  sql.Int,            req.user.userId)
     .query(`
       DECLARE @out TABLE (id INT);
       INSERT INTO sales_orders
-        (org_id, so_number, status, customer_id, warehouse_id, price_list_id, currency_code,
-         payment_terms, requested_delivery_date, notes, is_full_delivery_required,
-         created_by, created_at, updated_at)
+        (org_id, so_number, status, customer_id, customer_bp_id, warehouse_id, price_list_id,
+         currency_code, payment_terms, requested_delivery_date, notes, is_full_delivery_required,
+         ship_to_address_id, bill_to_address_id, created_by, created_at, updated_at)
       OUTPUT INSERTED.id INTO @out
-      VALUES (@org_id, @so_number, 'draft', @customer_id, @warehouse_id, @price_list_id,
+      VALUES (@org_id, @so_number, 'draft', @customer_id, @customer_bp_id, @warehouse_id, @price_list_id,
               @currency_code, @payment_terms, @requested_delivery_date, @notes,
-              @is_full_delivery_required, @created_by, GETDATE(), GETDATE());
+              @is_full_delivery_required, @ship_to_address_id, @bill_to_address_id,
+              @created_by, GETDATE(), GETDATE());
       SELECT id FROM @out;
     `);
 
@@ -132,12 +197,25 @@ router.get('/:id', perm('read'), asyncHandler(async (req, res) => {
   const [soRes, itemsRes, schedRes, delivRes] = await Promise.all([
     pool.request().input('id', sql.Int, id).input('org_id', sql.Int, orgId).query(`
       SELECT so.*, c.full_name AS customer_name, c.credit_limit, c.credit_hold,
-             q.quote_number, pl.name AS price_list_name, u.full_name AS confirmed_by_name
+             q.quote_number, pl.name AS price_list_name, u.full_name AS confirmed_by_name,
+             bp.legal_entity_name AS customer_bp_name,
+             bp.trading_name      AS customer_bp_trading_name,
+             ship_addr.address_line1 AS ship_to_line1,
+             ship_addr.suburb        AS ship_to_suburb,
+             ship_addr.state         AS ship_to_state,
+             ship_addr.postcode      AS ship_to_postcode,
+             bill_addr.address_line1 AS bill_to_line1,
+             bill_addr.suburb        AS bill_to_suburb,
+             bill_addr.state         AS bill_to_state,
+             bill_addr.postcode      AS bill_to_postcode
       FROM sales_orders so
       JOIN contacts c ON c.id = so.customer_id
-      LEFT JOIN customer_quotes q ON q.id = so.quote_id
-      LEFT JOIN price_lists pl ON pl.id = so.price_list_id
-      LEFT JOIN users u ON u.id = so.confirmed_by
+      LEFT JOIN customer_quotes q    ON q.id    = so.quote_id
+      LEFT JOIN price_lists pl       ON pl.id   = so.price_list_id
+      LEFT JOIN users u              ON u.id    = so.confirmed_by
+      LEFT JOIN business_partners bp ON bp.id   = so.customer_bp_id
+      LEFT JOIN contact_addresses ship_addr ON ship_addr.id = so.ship_to_address_id
+      LEFT JOIN contact_addresses bill_addr ON bill_addr.id = so.bill_to_address_id
       WHERE so.id=@id AND so.org_id=@org_id
     `),
     pool.request().input('so_id', sql.Int, id).query(`

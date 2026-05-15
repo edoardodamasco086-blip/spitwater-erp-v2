@@ -382,9 +382,13 @@ function PirSection({ productId, vendorId }) {
   return (
     <div>
       <div style={S.sectionTitle}>Purchasing Info Record</div>
+      <div style={{ fontSize: 11, color: 'var(--text-sub)', background: 'var(--bg)',
+        border: '1px solid var(--border)', borderRadius: 4, padding: '4px 8px', marginBottom: 8 }}>
+        ℹ️ Price conditions below are used for automatic PO pricing when this vendor is selected.
+      </div>
       <div style={row2}>
         <div>
-          <label style={S.label}>Vendor Material #</label>
+          <label style={S.label}>Vendor Part Number</label>
           <input style={inS} value={form.vendor_material_number}
             onChange={e => setF('vendor_material_number', e.target.value)} placeholder="Vendor's part number" />
         </div>
@@ -411,6 +415,12 @@ function PirSection({ productId, vendorId }) {
             onChange={e => setF('order_multiple', e.target.value)} />
         </div>
       </div>
+      {pir.purchase_uom_code && (
+        <div style={{ marginBottom: 10 }}>
+          <span style={S.label}>Purchasing UOM</span>
+          <span style={{ fontSize: 12, color: 'var(--text)', fontFamily: 'monospace' }}>{pir.purchase_uom_code}</span>
+        </div>
+      )}
       <div style={{ marginBottom: 10 }}>
         <label style={S.label}>Notes</label>
         <textarea style={{ ...inS, minHeight: 54, resize: 'vertical' }} value={form.notes}
@@ -688,8 +698,8 @@ export default function SourcingTab({ productId, vendors }) {
           {loading ? (
             <div style={{ padding: 16, fontSize: 12, color: 'var(--text-sub)' }}>Loading…</div>
           ) : sourceList.length === 0 ? (
-            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-sub)', textAlign: 'center' }}>
-              No vendors in source list yet.
+            <div style={{ padding: '20px 12px', color: 'var(--text-sub)', fontSize: 12, textAlign: 'center' }}>
+              No vendors in source list yet. Add a vendor below to begin.
             </div>
           ) : (
             <div>
