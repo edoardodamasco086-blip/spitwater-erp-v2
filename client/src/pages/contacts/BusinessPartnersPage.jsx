@@ -174,7 +174,7 @@ function NewPartnerModal({ onClose, onCreated }) {
     setError('');
 
     const payload = {
-      bp_type,
+      bp_type: bpType,
       bp_role: form.bp_role,
       ...(bpType === 'organization' ? {
         legal_entity_name: form.legal_entity_name.trim(),
@@ -187,7 +187,7 @@ function NewPartnerModal({ onClose, onCreated }) {
         email:             form.email.trim()           || null,
         phone:             form.phone.trim()           || null,
         payment_terms:     form.payment_terms          || null,
-        credit_limit:      form.credit_limit !== '' ? parseFloat(form.credit_limit) : null,
+        credit_limit:      form.credit_limit !== '' ? parseFloat(form.credit_limit) : 0,
         notes:             form.notes.trim()           || null,
       } : {
         first_name: form.first_name.trim(),

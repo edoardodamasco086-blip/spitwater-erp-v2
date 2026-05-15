@@ -86,7 +86,11 @@
       "Bash(node scripts/migrate-bp-phase2.js)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Dependencies:', list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\); print\\('DevDeps:', list\\(d.get\\('devDependencies',{}\\).keys\\(\\)\\)\\); print\\('Scripts:', list\\(d.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")",
       "Bash(node -e \"const p=require\\('/c/Projects/spitwater-erp-v2/server/package.json'\\); console.log\\('deps:', Object.keys\\(p.dependencies||{}\\).join\\(', '\\)\\); console.log\\('devDeps:', Object.keys\\(p.devDependencies||{}\\).join\\(', '\\)\\);\")",
-      "PowerShell($p = Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\package.json\" | ConvertFrom-Json; Write-Host \"deps:\" \\($p.dependencies.PSObject.Properties.Name -join \", \"\\); Write-Host \"devDeps:\" \\($p.devDependencies.PSObject.Properties.Name -join \", \"\\))"
+      "PowerShell($p = Get-Content \"c:\\\\Projects\\\\spitwater-erp-v2\\\\server\\\\package.json\" | ConvertFrom-Json; Write-Host \"deps:\" \\($p.dependencies.PSObject.Properties.Name -join \", \"\\); Write-Host \"devDeps:\" \\($p.devDependencies.PSObject.Properties.Name -join \", \"\\))",
+      "Bash(node scripts/migrate-sourcing-unify.js)",
+      "Bash(npm install *)",
+      "Bash(npx jest *)",
+      "Bash(node_modules/.bin/jest --testPathPattern=smoke --testTimeout=30000 --forceExit)"
     ]
   }
 }

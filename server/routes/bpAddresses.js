@@ -52,11 +52,11 @@ router.get('/addresses/:contactId', asyncHandler(async (req, res) => {
   const rows = await pool.request()
     .input('contact_id', sql.Int, contactId)
     .query(`
-      SELECT id, contact_id, address_role, label,
+      SELECT id, contact_id, address_role, address_type, label,
              address_line1, address_line2, suburb, state, postcode, country,
-             is_default, created_at, updated_at
+             country_code, is_default, is_active
       FROM contact_addresses
-      WHERE contact_id = @contact_id
+      WHERE contact_id = @contact_id AND is_active = 1
       ORDER BY is_default DESC, address_role ASC, id ASC
     `);
 
@@ -76,6 +76,7 @@ router.post('/addresses/:contactId', asyncHandler(async (req, res) => {
   const {
     address_role, label,
     address_line1, address_line2, suburb, state, postcode, country,
+    country_code,
     is_default = false,
   } = req.body;
 
@@ -89,6 +90,8 @@ router.post('/addresses/:contactId', asyncHandler(async (req, res) => {
       error: `address_role must be one of: ${VALID_ADDRESS_ROLES.join(', ')}.`,
     });
   }
+
+  const addressType = address_role === 'ship_to' ? 'shipping' : 'billing';
 
   // Clear other defaults for same address_role if is_default
   if (is_default && address_role) {
@@ -104,6 +107,7 @@ router.post('/addresses/:contactId', asyncHandler(async (req, res) => {
   const result = await pool.request()
     .input('contact_id',   sql.Int,          contactId)
     .input('address_role', sql.VarChar(20),  address_role  || null)
+    .input('address_type', sql.VarChar(20),  addressType)
     .input('label',        sql.NVarChar(100), label        || null)
     .input('address_line1', sql.NVarChar(255), address_line1.trim())
     .input('address_line2', sql.NVarChar(255), address_line2 || null)
@@ -111,12 +115,15 @@ router.post('/addresses/:contactId', asyncHandler(async (req, res) => {
     .input('state',        sql.NVarChar(100), state         || null)
     .input('postcode',     sql.VarChar(20),  postcode       || null)
     .input('country',      sql.NVarChar(100), country       || 'Australia')
+    .input('country_code', sql.VarChar(5),   country_code  || 'AU')
     .input('is_default',   sql.Bit,          is_default ? 1 : 0)
     .query(`
       INSERT INTO contact_addresses
-        (contact_id, address_role, label, address_line1, address_line2, suburb, state, postcode, country, is_default, created_at, updated_at)
+        (contact_id, address_role, address_type, label, address_line1, address_line2,
+         suburb, state, postcode, country, country_code, is_default, is_active)
       OUTPUT INSERTED.id
-      VALUES (@contact_id, @address_role, @label, @address_line1, @address_line2, @suburb, @state, @postcode, @country, @is_default, GETDATE(), GETDATE())
+      VALUES (@contact_id, @address_role, @address_type, @label, @address_line1, @address_line2,
+              @suburb, @state, @postcode, @country, @country_code, @is_default, 1)
     `);
 
   return res.status(201).json({ success: true, data: { id: result.recordset[0].id }, message: 'Address created.' });
@@ -180,8 +187,7 @@ router.patch('/addresses/:contactId/:id', asyncHandler(async (req, res) => {
         state         = COALESCE(@state,         state),
         postcode      = COALESCE(@postcode,      postcode),
         country       = COALESCE(@country,       country),
-        is_default    = COALESCE(@is_default,    is_default),
-        updated_at    = GETDATE()
+        is_default    = COALESCE(@is_default,    is_default)
       WHERE id = @id AND contact_id = @contact_id
     `);
 

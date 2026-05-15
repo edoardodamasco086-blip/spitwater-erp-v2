@@ -36,8 +36,8 @@ async function run() {
   const step2 = await pool.request().query(`
     INSERT INTO purchase_info_records
       (org_id, product_id, vendor_id, vendor_material_number,
-       lead_time_days, moq, order_multiple, notes, is_preferred, is_blocked,
-       created_at, updated_at)
+       vendor_lead_time_days, vendor_moq, order_multiple, notes,
+       is_active, created_at, updated_at)
     SELECT DISTINCT
       ps.org_id,
       ps.product_id,
@@ -47,8 +47,7 @@ async function run() {
       ps.min_order_qty,
       ps.order_multiple,
       ps.notes,
-      ps.is_preferred,
-      0,
+      1,
       GETDATE(),
       GETDATE()
     FROM product_suppliers ps
@@ -86,10 +85,10 @@ async function run() {
       (pir_id, valid_from, valid_to, base_price, currency_code, created_at)
     SELECT
       pir.id,
-      psp.valid_from,
+      COALESCE(psp.valid_from, CAST(GETDATE() AS DATE)),
       psp.valid_to,
       psp.unit_price,
-      psp.currency_code,
+      COALESCE(psp.currency_code, 'AUD'),
       GETDATE()
     FROM product_supplier_prices psp
     INNER JOIN purchase_info_records pir
@@ -98,12 +97,9 @@ async function run() {
     WHERE psp.is_active = 1
       AND NOT EXISTS (
         SELECT 1 FROM pir_conditions pc
-        WHERE pc.pir_id       = pir.id
-          AND (
-            (pc.valid_from = psp.valid_from)
-            OR (pc.valid_from IS NULL AND psp.valid_from IS NULL)
-          )
-          AND pc.currency_code = psp.currency_code
+        WHERE pc.pir_id      = pir.id
+          AND pc.base_price  = psp.unit_price
+          AND pc.currency_code = COALESCE(psp.currency_code, 'AUD')
       )
   `);
   const conditionsCreated = step4.rowsAffected[0] || 0;

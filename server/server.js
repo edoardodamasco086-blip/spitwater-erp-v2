@@ -184,11 +184,13 @@ app.use(notFound);
 app.use(globalErrorHandler);
 
 // ── Start ─────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  logger.info(`Server running on http://localhost:${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`CORS origin:  ${corsOrigins.join(', ')}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`Server running on http://localhost:${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`CORS origin:  ${corsOrigins.join(', ')}`);
+  });
+}
 
 // ── Graceful shutdown ─────────────────────────────────────────
 process.on('SIGTERM', () => {

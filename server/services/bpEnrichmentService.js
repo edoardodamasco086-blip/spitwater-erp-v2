@@ -52,10 +52,13 @@ async function enrich(bp, orgId, triggeredBy, pool, sql) {
     // ── Search 1: contact details ──────────────────────────────
     const res1 = await axios.get('https://serpapi.com/search', {
       params: {
-        engine:  'google',
-        q:       `${searchName} ${bp.bp_type === 'organization' ? 'company' : ''} Australia contact email phone`.trim(),
-        api_key: SERP_API_KEY,
-        num:     5,
+        engine:   'google',
+        q:        `${searchName} ${bp.bp_type === 'organization' ? 'company' : ''} Australia contact email phone`.trim(),
+        api_key:  SERP_API_KEY,
+        num:      5,
+        gl:       'au',       // Google country: Australia
+        hl:       'en',
+        location: 'Australia',
       },
       timeout: 15000,
     });
@@ -96,10 +99,13 @@ async function enrich(bp, orgId, triggeredBy, pool, sql) {
     if (bp.bp_type === 'organization') {
       const res2 = await axios.get('https://serpapi.com/search', {
         params: {
-          engine:  'google',
-          q:       `${searchName} official website LinkedIn Australia`,
-          api_key: SERP_API_KEY,
-          num:     5,
+          engine:   'google',
+          q:        `${searchName} official website LinkedIn Australia`,
+          api_key:  SERP_API_KEY,
+          num:      5,
+          gl:       'au',
+          hl:       'en',
+          location: 'Australia',
         },
         timeout: 15000,
       });
@@ -166,7 +172,7 @@ async function enrich(bp, orgId, triggeredBy, pool, sql) {
             max_tokens: 300,
             messages: [{
               role:    'user',
-              content: `Based on these search results about the company "${searchName}", write a concise 2-3 sentence business summary for an ERP system. Focus on what they do, their industry, and their likely scale. Be factual and professional. Search results:\n\n${summarySnippets}`,
+              content: `Based on these search results about the Australian company "${searchName}", write a concise 2-3 sentence business summary for an ERP system. Focus on what they do, their industry, their Australian presence, and their likely scale. Be factual and professional. If the results appear to be for a non-Australian company with the same name, note that. Search results:\n\n${summarySnippets}`,
             }],
           }, {
             headers: {

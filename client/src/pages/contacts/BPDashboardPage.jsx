@@ -1334,7 +1334,7 @@ function ProposalsPanel({ proposals, onReviewed }) {
             </thead>
             <tbody>
               {proposals.map(p => {
-                const cs = confidenceStyle(p.confidence * 100);
+                const cs = confidenceStyle(p.confidence);
                 const busy = processing[p.id];
                 return (
                   <React.Fragment key={p.id}>
@@ -1371,7 +1371,7 @@ function ProposalsPanel({ proposals, onReviewed }) {
                           fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 20,
                           background: cs.bg, color: cs.color, border: `1px solid ${cs.border}`,
                         }}>
-                          {p.confidence !== null ? `${Math.round(p.confidence * 100)}%` : '—'}
+                          {p.confidence !== null ? `${Math.round(p.confidence)}%` : '—'}
                         </span>
                       </td>
                       <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
@@ -1541,18 +1541,22 @@ export default function BPDashboardPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
 
-  const [data360,   setData360]   = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState('');
-  const [enriching, setEnriching] = useState(false);
-  const [toast,     setToast]     = useState(null); // { message, type }
+  const [data360,        setData360]        = useState(null);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState('');
+  const [enriching,      setEnriching]      = useState(false);
+  const [enrichPending,  setEnrichPending]  = useState(false);
+  const [toast,          setToast]          = useState(null); // { message, type }
+  const pollRef = useRef(null);
 
   const load360 = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const { data } = await bpApi.get360(id);
-      setData360(data.data || data);
+      const d = data.data || data;
+      setData360(d);
+      if (d.pending_proposals?.length > 0) setEnrichPending(false);
     } catch (e) {
       setError(e.response?.data?.message || e.message || 'Failed to load business partner.');
     } finally {
@@ -1562,12 +1566,30 @@ export default function BPDashboardPage() {
 
   useEffect(() => { load360(); }, [load360]);
 
+  // Clean up polling on unmount
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
   async function handleEnrich() {
     setEnriching(true);
     try {
       await bpApi.enrich(id);
-      showToast('AI enrichment triggered! Proposals will appear below shortly.', 'success');
-      setTimeout(load360, 3000);
+      showToast('AI enrichment running — proposals will appear below in a few seconds.', 'success');
+      setEnrichPending(true);
+      // Poll every 5 s up to 4 times (20 s window) until proposals arrive
+      let attempts = 0;
+      pollRef.current = setInterval(async () => {
+        attempts++;
+        try {
+          const { data } = await bpApi.get360(id);
+          const d = data.data || data;
+          setData360(d);
+          if (d.pending_proposals?.length > 0 || attempts >= 4) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            setEnrichPending(false);
+          }
+        } catch { /* ignore poll errors */ }
+      }, 5000);
     } catch (e) {
       showToast(e.response?.data?.message || 'Enrichment failed.', 'error');
     } finally {
@@ -1605,7 +1627,7 @@ export default function BPDashboardPage() {
     );
   }
 
-  const { bp, addresses, banking, linked_persons, linked_orgs, open_docs, pending_proposals } = data360;
+  const { bp, addresses, banking, linked_persons, linked_orgs, open_documents, pending_proposals } = data360;
   const legacyId = bp.legacy_contact_id;
 
   const roleBadgeMap = {
@@ -1674,7 +1696,17 @@ export default function BPDashboardPage() {
 
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-            {pending_proposals?.length > 0 && (
+            {enrichPending && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
+                padding: '6px 12px', borderRadius: 6,
+                background: 'rgba(100,116,139,0.1)', color: 'var(--text-sub)',
+                border: '1px solid var(--border)',
+              }}>
+                <span className="spinner-dark" style={{ width: 12, height: 12 }} /> Checking for proposals…
+              </span>
+            )}
+            {!enrichPending && pending_proposals?.length > 0 && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12,
                 padding: '6px 12px', borderRadius: 6,
@@ -1753,7 +1785,7 @@ export default function BPDashboardPage() {
           )}
 
           {/* Open Documents */}
-          <OpenDocumentsPanel documents={open_docs || []} />
+          <OpenDocumentsPanel documents={open_documents || []} />
         </div>
       </div>
 

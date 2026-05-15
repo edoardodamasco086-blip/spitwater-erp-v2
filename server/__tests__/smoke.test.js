@@ -157,7 +157,7 @@ describe('Smoke Test 1: BP Master Data Flow', () => {
     expect(data.linked_persons.length).toBeGreaterThanOrEqual(1);
 
     // Open docs array must exist (even if empty)
-    expect(Array.isArray(data.open_docs)).toBe(true);
+    expect(Array.isArray(data.open_documents)).toBe(true);
   });
 });
 
@@ -318,7 +318,7 @@ describe('Smoke Test 3: O2C ATP Engine Flow', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data).toHaveProperty('bp');
       expect(res.body.data).toHaveProperty('addresses');
-      expect(res.body.data).toHaveProperty('open_docs');
+      expect(res.body.data).toHaveProperty('open_documents');
     }
   });
 });

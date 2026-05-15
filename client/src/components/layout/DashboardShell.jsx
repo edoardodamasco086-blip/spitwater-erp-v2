@@ -164,8 +164,7 @@ export default function DashboardShell() {
           <div className={styles.navDivider} />
 
           <NavSection label="CRM" collapsed={collapsed}>
-            <NavItem to="/contacts" icon={<UsersIcon />}       label="Contacts"          collapsed={collapsed} />
-            <NavItem to="/bp"       icon={<BriefcaseIcon />}   label="Business Partners" collapsed={collapsed} />
+            <NavItem to="/bp" icon={<BriefcaseIcon />} label="Business Partners" collapsed={collapsed} />
           </NavSection>
 
           {/* ── ADMIN NAV (only visible to admin+) ── */}
